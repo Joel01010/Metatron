@@ -1,0 +1,102 @@
+{
+  "AGENT_MERGE_PROMPT.md": {
+    "bytes": 4684,
+    "sha256": "3d18efc73aa8762bb38f7d15b16e34a17f782993342471eb9ac0a8336f1e0017"
+  },
+  "ARCHITECTURE.md": {
+    "bytes": 3508,
+    "sha256": "cd17d2b7601ddb1f89bdf934ebab861aa5db90e3c18436572e0a7e1e46d31da0"
+  },
+  "ASSISTANT_INTEGRATION.md": {
+    "bytes": 1413,
+    "sha256": "7769d25adf0f0e3d3454872c1e47df8d3ec6181c98720402e962980cb81011eb"
+  },
+  "Apply-JarvisLite.ps1": {
+    "bytes": 2298,
+    "sha256": "059b9868c9983a72c8d21b0f2728bc02f73a82c25118b35af026ec7420d23e88"
+  },
+  "Bootstrap-Unified.ps1": {
+    "bytes": 2299,
+    "sha256": "7d8e78e8f1aa1d1cacc39c05643632e9ca059cdeb9aa42f4a32ef5523a7de0f1"
+  },
+  "MEMORY_PLAN.md": {
+    "bytes": 3452,
+    "sha256": "a8b1c5c8c4f50ef7a48945e9ef8288a6bb0c8e8cb622f0f7db42371e1cc1cb33"
+  },
+  "ModelLab/BEST_MODEL_DECISION_2026-11-03.md": {
+    "bytes": 4781,
+    "sha256": "83e37026d685c5ccc62d8bf4d0909dcc748adee93b6fa50dde98aa337cfd948f"
+  },
+  "ModelLab/Install-Orukeet-NPU-Lab.ps1": {
+    "bytes": 1464,
+    "sha256": "65dd4f091c383d92365f3c66678dfc89656fb0d9ae11169b24223673a09e57f9"
+  },
+  "ModelLab/QWEN3_ASR_QUALITY_MODE.md": {
+    "bytes": 1237,
+    "sha256": "aa1551be7f9c0f041ee708ada62e9a5e38a2049aacafa07fac0f55eebdfb1852"
+  },
+  "ModelLab/README.md": {
+    "bytes": 1735,
+    "sha256": "9a9804346617ccddb64efc76f1b11fa48f2071ec9ca618a0624e301b4b8414d8"
+  },
+  "ModelLab/__pycache__/download_orukeet_onnx.cpython-313.pyc": {
+    "bytes": 4243,
+    "sha256": "019997709ef3fe314d0a32b19b097a2e6a7bdad408bfa8155b2964472a12445c"
+  },
+  "ModelLab/__pycache__/probe_orukeet_npu.cpython-313.pyc": {
+    "bytes": 5443,
+    "sha256": "af9108f4f0f84c655f5fa5628d0a469e3bfa63f4e5af79d70e678d8c1e8032fd"
+  },
+  "ModelLab/download_orukeet_onnx.py": {
+    "bytes": 2354,
+    "sha256": "769348fb5d6d8f1bce44cb698a944828ac7a60b87547b7b380fa1f9437398358"
+  },
+  "ModelLab/probe_orukeet_npu.py": {
+    "bytes": 3110,
+    "sha256": "12042f2d452d62ddff2cf9d7b05e5ab3c6d5127dd9014688f294e0e10fb1791c"
+  },
+  "QUICK_START.txt": {
+    "bytes": 392,
+    "sha256": "c7223e61592ac80e729d75877dcf33434ab77ae7ef028063335790a3d230a8a1"
+  },
+  "README.md": {
+    "bytes": 4814,
+    "sha256": "27668ffcd36dcdcfc0f24348775f92aa128b23d0e5f6cd136f1e7728a13e6a24"
+  },
+  "THIRD_PARTY_NOTICES.md": {
+    "bytes": 645,
+    "sha256": "e14ffbd4ec6cf60add313860a6e1b4a1b39f72d40411012dea563f581d164584"
+  },
+  "VALIDATION.md": {
+    "bytes": 1296,
+    "sha256": "68cb9b536974e687274c8ddae7c5ec1fd95c809424361f3c16184d4cd1ed1b59"
+  },
+  "patch_payload/engine/ezstt/__pycache__/agent_bridge.cpython-313.pyc": {
+    "bytes": 7507,
+    "sha256": "ec2622c5637362c67c3091fc2d71516869e6ed6f46ed5311750afb85d061cae4"
+  },
+  "patch_payload/engine/ezstt/agent_bridge.py": {
+    "bytes": 4359,
+    "sha256": "804d0371a477713e6385a6f39ff9225222e16b8d9ba3da723327b2cc32563f0b"
+  },
+  "patch_payload/ui/overlay.html": {
+    "bytes": 431,
+    "sha256": "f82c00501a9fad7df5269354744577be437e1a8a7e037a0d91f07c899bf7506c"
+  },
+  "patch_payload/ui/src/jarvis-lite.css": {
+    "bytes": 5208,
+    "sha256": "c2582df6f00dce5f31942f92b88256b12b43eb0dc8ae29a9217e4b599974435b"
+  },
+  "patch_payload/ui/src/jarvis-lite.ts": {
+    "bytes": 6816,
+    "sha256": "923f128a8ba39cb8bf347c0b3e4defc278a77bc4b9e1976183b3bfec6653bb64"
+  },
+  "patch_payload/ui/src/overlay.css": {
+    "bytes": 136,
+    "sha256": "0b8f80b96a82655ccf55b535d8b396830d442b0b0fc52d3ea3cde499435bc35d"
+  },
+  "patch_payload/ui/src/overlay.ts": {
+    "bytes": 1789,
+    "sha256": "6b4d155ed43bee568d8e54477fd8cfe6f0e7e0281aec335fbf848a9397fbfb9a"
+  }
+}

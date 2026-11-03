@@ -1,0 +1,268 @@
+/* Lightweight JARVIS HUD inspired by OpenDex.
+   Designed for a 520x160 transparent Tauri overlay.
+   Expensive animation is paused whenever the HUD is asleep. */
+
+.jarvis-stage {
+  width: 100%;
+  height: 100%;
+  display: grid;
+  place-items: center;
+  pointer-events: none;
+  user-select: none;
+  font-family: "Cascadia Mono", "Segoe UI Variable Text", "Segoe UI", monospace;
+  --cyan: #67e8f9;
+  --cyan-2: #22d3ee;
+  --green: #34d399;
+  --amber: #fbbf24;
+  --red: #ef4444;
+}
+
+.jv {
+  --jv-amp: 0;
+  position: relative;
+  width: 460px;
+  height: 132px;
+  display: grid;
+  grid-template-columns: 138px 1fr;
+  align-items: center;
+  gap: 14px;
+  padding: 10px 18px 10px 8px;
+  border: 1px solid rgba(103, 232, 249, 0.20);
+  border-radius: 18px;
+  background:
+    radial-gradient(circle at 19% 50%, rgba(34, 211, 238, 0.10), transparent 28%),
+    linear-gradient(100deg, rgba(3, 12, 18, 0.92), rgba(2, 8, 12, 0.72));
+  box-shadow:
+    0 0 30px rgba(34, 211, 238, calc(0.05 + var(--jv-amp) * 0.12)),
+    inset 0 0 28px rgba(34, 211, 238, 0.035);
+  backdrop-filter: blur(12px);
+  color: #e6fbff;
+  opacity: 0;
+  translate: 0 10px;
+  scale: 0.97;
+  transition:
+    opacity 150ms ease,
+    translate 180ms ease,
+    scale 180ms ease,
+    border-color 180ms ease;
+  overflow: hidden;
+}
+
+.jv.visible {
+  opacity: 1;
+  translate: 0 0;
+  scale: 1;
+}
+
+.jv-grid {
+  position: absolute;
+  inset: 0;
+  opacity: 0.10;
+  background-image:
+    linear-gradient(rgba(34,211,238,.16) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(34,211,238,.16) 1px, transparent 1px);
+  background-size: 24px 24px;
+  mask-image: linear-gradient(90deg, black 0%, black 45%, transparent 92%);
+}
+
+.jv-reactor {
+  position: relative;
+  width: 126px;
+  height: 126px;
+  transform-origin: 50% 50%;
+  will-change: transform;
+}
+
+.jv-rings {
+  width: 100%;
+  height: 100%;
+  color: var(--cyan);
+  overflow: visible;
+}
+
+.jv-ring {
+  fill: none;
+  stroke: currentColor;
+  transform-origin: 90px 90px;
+}
+
+.jv-r1 {
+  stroke-width: 1;
+  stroke-dasharray: 2 6;
+  opacity: .38;
+  animation: jv-spin 15s linear infinite;
+}
+
+.jv-r2 {
+  stroke-width: 2.4;
+  stroke-dasharray: 34 14;
+  opacity: .55;
+  animation: jv-spin-rev 10s linear infinite;
+}
+
+.jv-r3 {
+  stroke-width: 1.2;
+  stroke-dasharray: 5 7;
+  opacity: .68;
+  animation: jv-spin 7s linear infinite;
+}
+
+.jv-r4 {
+  stroke-width: 1;
+  opacity: .30;
+}
+
+.jv-rings line {
+  stroke: currentColor;
+  stroke-width: 1;
+  opacity: .38;
+}
+
+.jv-core {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 44px;
+  height: 44px;
+  translate: -50% -50%;
+  border-radius: 50%;
+  opacity: .72;
+  will-change: transform, opacity;
+  background:
+    radial-gradient(circle at 48% 42%,
+      #ecfeff 0%,
+      #a5f3fc 20%,
+      #22d3ee 45%,
+      #0891b2 68%,
+      rgba(8,145,178,0) 78%);
+  box-shadow:
+    0 0 calc(20px + var(--jv-amp) * 22px) rgba(34,211,238,.55),
+    inset 0 0 14px rgba(236,254,255,.75);
+}
+
+.jv-info {
+  z-index: 2;
+  min-width: 0;
+}
+
+.jv-kicker {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: rgba(103,232,249,.58);
+  font-size: 9px;
+  letter-spacing: .28em;
+  margin-bottom: 6px;
+}
+
+.jv-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--cyan-2);
+  box-shadow: 0 0 8px rgba(34,211,238,.8);
+}
+
+.jv-status {
+  font-size: 20px;
+  line-height: 1.05;
+  letter-spacing: .14em;
+  font-weight: 600;
+  color: #d9fbff;
+  text-shadow: 0 0 16px rgba(34,211,238,.2);
+}
+
+.jv-detail {
+  height: 18px;
+  margin-top: 5px;
+  font-family: "Segoe UI Variable Text", "Segoe UI", sans-serif;
+  font-size: 11px;
+  color: rgba(231, 249, 252, .62);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.jv-meta {
+  margin-top: 5px;
+  display: flex;
+  gap: 7px;
+  align-items: center;
+  color: rgba(103,232,249,.50);
+  font-size: 9px;
+  letter-spacing: .12em;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.jv-model {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.jv-timer {
+  margin-left: auto;
+  color: rgba(248,113,113,.85);
+}
+
+.jv[data-state="LISTENING"] {
+  border-color: rgba(103,232,249, calc(.24 + var(--jv-amp) * .34));
+}
+
+.jv[data-state="TRANSCRIBING"] .jv-status,
+.jv[data-state="LOADING"] .jv-status {
+  color: #fde68a;
+}
+
+.jv[data-state="TRANSCRIBING"] .jv-r2,
+.jv[data-state="LOADING"] .jv-r2 {
+  color: var(--amber);
+  animation-duration: 4.2s;
+}
+
+.jv[data-state="INJECTED"] .jv-status {
+  color: #a7f3d0;
+}
+
+.jv[data-state="INJECTED"] .jv-core {
+  background: radial-gradient(circle, #d1fae5, #34d399 45%, rgba(52,211,153,0) 78%);
+  box-shadow: 0 0 34px rgba(52,211,153,.65);
+}
+
+.jv[data-state="ERROR"] {
+  border-color: rgba(239,68,68,.42);
+}
+
+.jv[data-state="ERROR"] .jv-status {
+  color: #fca5a5;
+}
+
+.jv[data-state="ERROR"] .jv-core {
+  background: radial-gradient(circle, #fee2e2, #ef4444 45%, rgba(239,68,68,0) 78%);
+  box-shadow: 0 0 28px rgba(239,68,68,.58);
+}
+
+.jv.asleep .jv-r1,
+.jv.asleep .jv-r2,
+.jv.asleep .jv-r3 {
+  animation-play-state: paused;
+}
+
+@keyframes jv-spin {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes jv-spin-rev {
+  to { transform: rotate(-360deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .jv-r1,
+  .jv-r2,
+  .jv-r3 {
+    animation: none;
+  }
+  .jv {
+    transition-duration: 80ms;
+  }
+}

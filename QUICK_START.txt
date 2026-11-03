@@ -1,0 +1,14 @@
+1. Extract this ZIP.
+2. Open PowerShell in the folder.
+3. Run:
+
+   Set-ExecutionPolicy -Scope Process Bypass -Force
+   .\Bootstrap-Unified.ps1
+
+4. Give AGENT_MERGE_PROMPT.md to the local coding agent.
+
+The prepared merge uses:
+- EZSTT as the one Tauri shell
+- EZSTT/OpenVINO as the one STT engine
+- OpenDex-inspired JARVIS UI in vanilla TypeScript
+- optional dependency-free assistant bridge
