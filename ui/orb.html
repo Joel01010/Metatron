@@ -1,1 +1,13 @@
-<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>html,body{margin:0;width:100%;height:100%;overflow:hidden;background:transparent}#orb{position:fixed;inset:0;width:100%;height:100%}#state,#hud,#help{display:none}</style></head><body><canvas id="orb"></canvas><span id="state"></span><script src="orb-renderer.js"></script><script>window.addEventListener('message',e=>{if(e.data?.metatronEvent)window.metatronOrb?.ingest(e.data.metatronEvent);if(e.data?.quality)window.metatronOrb?.setQuality(e.data.quality)})</script><script>document.getElementById('orb').addEventListener('dblclick',()=>window.__TAURI__?.core?.invoke('window_command',{action:'main.show',value:null}))</script></body></html>
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <style>html,body{margin:0;width:100%;height:100%;overflow:hidden;background:transparent}#orb{position:fixed;inset:0;width:100%;height:100%}#state,#hud,#help{display:none}</style>
+</head>
+<body>
+<canvas id="orb"></canvas><span id="state"></span>
+<script src="orb-renderer.js"></script>
+<script src="orb.js"></script>
+</body>
+</html>

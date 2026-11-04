@@ -10,7 +10,7 @@ import threading
 import time
 from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any, Iterable, Callable
 
 
 @dataclass(slots=True)
@@ -291,7 +291,10 @@ class HardwareManager:
     silently fell back to CPU.
     """
 
-    def __init__(self, db: Any | None = None, bus: Any | None = None, winml_python: str = ""):
+    def __init__(
+        self, db: Any | None = None, bus: Any | None = None, winml_python: str = "",
+        fault_injector: Callable[[dict[str, Any], str], bool] | None = None,
+    ):
         self.db = db
         self.bus = bus
         self._lock = threading.RLock()
@@ -299,6 +302,9 @@ class HardwareManager:
         self._devices: list[Accelerator] = []
         self._last_refresh = 0.0
         self._actual: dict[str, dict[str, Any]] = {}
+        # Test-only dependency injection. Production has no environment/IPC hook
+        # capable of forcing hardware failures.
+        self._fault_injector = fault_injector
         saved = db.get_setting("hardware.policy", {}) if db is not None else {}
         if not isinstance(saved, dict):
             saved = {}
@@ -344,6 +350,33 @@ class HardwareManager:
         except Exception as exc:
             return {"configured": True, "error": f"{type(exc).__name__}: {exc}"}
 
+    def _configured_winml_devices(self) -> list[Accelerator]:
+        """Enumerate routable devices from the isolated Windows ML runtime.
+
+        `winml_worker devices` performs provider ensure/registration and device
+        enumeration in the same process, then returns plain metadata for the
+        lightweight control plane.
+        """
+        if not self.winml_python:
+            return []
+        result = self._winml_worker("devices", timeout=90.0)
+        if result.get("error"):
+            return []
+        out: list[Accelerator] = []
+        for idx, d in enumerate(result.get("devices") or []):
+            kind = str(d.get("kind") or "").upper()
+            if kind not in {"NPU", "GPU", "CPU"}:
+                continue
+            ep = str(d.get("ep_name") or "WindowsML")
+            name = str(d.get("name") or ep)
+            vendor = str(d.get("vendor") or _EP_CLASS.get(ep, (kind, _vendor(name)))[1] or "unknown")
+            out.append(Accelerator(
+                id=f"winml-worker:{ep}:{kind}:{idx}", kind=kind, name=name, vendor=vendor,
+                provider=ep, provider_device=str(d.get("device_id") or idx), source="windows-ml-worker",
+                available=True, routable=True, details={"registration_scope": result.get("registration_scope", "worker"), "isolated_runtime": True},
+            ))
+        return out
+
     def windows_ml_catalog(self) -> dict[str, Any]:
         return self._winml_worker("catalog", timeout=20.0)
 
@@ -360,7 +393,7 @@ class HardwareManager:
         return result
 
     def refresh(self) -> dict[str, Any]:
-        found = _openvino_devices() + _onnxruntime_providers() + _windows_accelerators()
+        found = self._configured_winml_devices() + _openvino_devices() + _onnxruntime_providers() + _windows_accelerators()
         found.append(_cpu_device())
         dedup: dict[tuple[str, str, str], Accelerator] = {}
         for d in found:
@@ -407,6 +440,10 @@ class HardwareManager:
             ranked.append(_cpu_device())
         return [d.to_dict() for d in ranked]
 
+    def should_fault(self, device: dict[str, Any], workload: str) -> bool:
+        fn = self._fault_injector
+        return bool(fn(device, workload)) if fn is not None else False
+
     def select(self, workload: str = "generic", order: Iterable[str] | None = None) -> dict[str, Any]:
         requested = self._normalize_order(order or self._order)
         candidates = self.candidates(workload, requested)
@@ -422,7 +459,7 @@ class HardwareManager:
     def report_actual(self, workload: str, *, kind: str, provider: str, device: str = "", model: str = "") -> dict[str, Any]:
         record = {
             "workload": str(workload), "kind": str(kind).upper(), "provider": str(provider),
-            "device": str(device), "model": str(model), "ts": time.time(),
+            "device": str(device), "model": str(model), "verified": True, "ts": time.time(),
         }
         with self._lock:
             self._actual[str(workload)] = record
@@ -464,7 +501,10 @@ class WindowsMLSessionFactory:
         self.hardware = hardware
 
     def create_session(
-        self, model_path: str, workload: str, *, provider_options: dict[str, dict[str, str]] | None = None
+        self, model_path: str, workload: str, *,
+        provider_options: dict[str, dict[str, str]] | None = None,
+        warmup: Callable[[Any], None] | None = None,
+        require_verified: bool = False,
     ) -> tuple[Any, dict[str, Any]]:
         try:
             import onnxruntime as ort  # type: ignore
@@ -472,6 +512,26 @@ class WindowsMLSessionFactory:
             raise RuntimeError("ONNX Runtime / Windows ML is not installed") from exc
         provider_options = provider_options or {}
         errors: list[str] = []
+
+        def finish(session: Any, *, kind: str, provider: str, device: str) -> dict[str, Any]:
+            verified = False
+            if warmup is not None:
+                warmup(session)
+                verified = True
+            elif not require_verified:
+                # Session creation is useful operationally, but it is not a
+                # placement proof. Keep it out of HardwareManager.actual.
+                return {
+                    "workload": workload, "kind": kind, "provider": provider,
+                    "device": device, "model": str(model_path), "verified": False,
+                    "stage": "session_created",
+                }
+            else:
+                raise RuntimeError("verified placement requires a warm-up callback")
+            return self.hardware.report_actual(
+                workload, kind=kind, provider=provider, device=device, model=str(model_path)
+            )
+
         get_devices = getattr(ort, "get_ep_devices", None)
         if callable(get_devices):
             try:
@@ -484,17 +544,23 @@ class WindowsMLSessionFactory:
                     if _ort_kind(getattr(getattr(d, "hardware_device", None), "type", "")) != kind:
                         continue
                     ep = str(getattr(d, "ep_name", "") or "")
+                    dev_meta = {"kind": kind, "provider": ep, "name": str(getattr(getattr(d, "hardware_device", None), "name", "") or d)}
+                    if self.hardware.should_fault(dev_meta, workload):
+                        errors.append(f"{kind}/{ep}: test fault injected")
+                        continue
                     try:
                         opts = ort.SessionOptions()
+                        add_cfg = getattr(opts, "add_session_config_entry", None)
+                        if kind in {"NPU", "GPU"} and callable(add_cfg):
+                            add_cfg("session.disable_cpu_ep_fallback", "1")
                         add = getattr(opts, "add_provider_for_devices", None)
                         if not callable(add):
                             raise RuntimeError("Windows ML device API is unavailable in this ONNX Runtime build")
                         add([d], provider_options.get(ep, {}))
                         session = ort.InferenceSession(str(model_path), sess_options=opts)
-                        actual = self.hardware.report_actual(
-                            workload, kind=kind, provider=ep,
+                        actual = finish(
+                            session, kind=kind, provider=ep,
                             device=str(getattr(getattr(d, "hardware_device", None), "name", "") or d),
-                            model=str(model_path),
                         )
                         return session, actual
                     except Exception as exc:
@@ -536,14 +602,25 @@ class WindowsMLSessionFactory:
                     continue
                 options = dict(defaults)
                 options.update(provider_options.get(ep, {}))
+                dev_meta = {"kind": kind, "provider": ep, "name": options.get("device_type", "legacy")}
+                if self.hardware.should_fault(dev_meta, workload):
+                    errors.append(f"legacy/{kind}/{ep}: test fault injected")
+                    continue
                 try:
                     provider_spec: Any = (ep, options) if options else ep
-                    session = ort.InferenceSession(str(model_path), providers=[provider_spec])
+                    sess_options = None
+                    so_cls = getattr(ort, "SessionOptions", None)
+                    if callable(so_cls):
+                        sess_options = so_cls()
+                        add_cfg = getattr(sess_options, "add_session_config_entry", None)
+                        if kind in {"NPU", "GPU"} and callable(add_cfg):
+                            add_cfg("session.disable_cpu_ep_fallback", "1")
+                    session = ort.InferenceSession(str(model_path), sess_options=sess_options, providers=[provider_spec])
                     # Session creation succeeded with an explicit device-class
                     # target (or a class-specific EP), so this placement is real.
-                    actual = self.hardware.report_actual(
-                        workload, kind=kind, provider=ep,
-                        device=options.get("device_type", "legacy"), model=str(model_path),
+                    actual = finish(
+                        session, kind=kind, provider=ep,
+                        device=options.get("device_type", "legacy"),
                     )
                     return session, actual
                 except Exception as exc:

@@ -3,6 +3,7 @@ from __future__ import annotations
 import base64
 import json
 import os
+import secrets
 import time
 import urllib.error
 import urllib.request
@@ -32,11 +33,16 @@ class OpenCodeAdapter(ProcessAdapter):
     password: str | None = None
 
     def __post_init__(self):
-        if self.password is None:
-            self.password = os.environ.get("OPENCODE_SERVER_PASSWORD") or None
+        configured = os.environ.get("OPENCODE_SERVER_PASSWORD") or None
+        self.password = self.password or configured or secrets.token_urlsafe(32)
         self.username = os.environ.get("OPENCODE_SERVER_USERNAME", self.username)
         if self.args is None:
-            self.args = ["serve", "--hostname", self.host, "--port", str(self.port)]
+            self.args = ["serve", "--hostname", "127.0.0.1", "--port", str(self.port)]
+        self.host = "127.0.0.1"
+        env = dict(self.env or {})
+        env["OPENCODE_SERVER_PASSWORD"] = self.password
+        env["OPENCODE_SERVER_USERNAME"] = self.username
+        self.env = env
 
     @property
     def base_url(self) -> str:

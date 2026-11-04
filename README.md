@@ -1,179 +1,111 @@
-# Metatron
+# Metatron v1.3.0
 
-Metatron is an open-source, Windows-first **AI operations console** designed to keep local AI useful on machines with limited RAM while still taking advantage of modern NPUs and GPUs.
+**Windows-first, local-first dictation and desktop intelligence with truthful accelerator placement and a strict memory governor.**
 
-It combines:
+Metatron is an open-source Tauri/WebView2 desktop application designed to keep its control plane small while dispatching heavy ML work to disposable sidecars. Its certified core is intentionally narrow: **dictation, reactive presence, memory governance, and truthful NPU → GPU → CPU placement**. Agent adapters, scheduler automation, and semantic cleanup are available but remain explicitly experimental.
 
-- NPU-first local inference with GPU and CPU fallback
-- a procedural pale-red / golden reactive AI presence
-- local TTS for important system replies
-- agent control for E.O.P./Hermes, Ezra, Codex, Claude Code and OpenCode
-- Kanban task orchestration and approvals
-- scheduling, telemetry and memory governance
-- customizable appearance, presence, voice, hardware, privacy and agent policies
-- a framework-free Tauri dashboard to keep runtime memory low
+## Product principles
 
-## Hardware policy
+- **NPU first, GPU second, CPU last.** Every routable NPU is tried before every routable GPU. CPU is the universal last resort when enabled.
+- **Detected is not routable; selected is not actual.** Metatron reports detected, routable, selected, session-created, and verified actual placement separately.
+- **Strict memory ownership.** Heavy runtimes are disposable workers; Strict Mode's logical managed ceiling is 2816 MiB.
+- **Local and private by default.** Transcript history starts off. Support bundles exclude the SQLite DB, transcript history, audio, and secrets.
+- **A real desktop product, not an admin console.** v1.3 adds onboarding, command palette, history, dictionary, per-app policies, model center, diagnostics, and full-system qualification tooling.
 
-The default accelerator policy is:
+## v1.3 workspaces
 
-**all routable NPUs → all routable GPUs → CPU**
+Home · Dictation · History · Dictionary · Hardware · Models · Voice · Metrics · Tasks · Agents · Diagnostics · Settings
 
-Metatron does not assume that a requested device is the device actually used. A runtime must report successful placement before the dashboard marks a workload as active on NPU/GPU/CPU.
+The UI keeps the pale-red/golden procedural orb as Metatron's presence. User speech drives inward energy; TTS drives outward energy. High-rate level events are pushed through a bounded latest-wins channel at ~30 Hz and stop when no renderer subscribes.
 
-### NPU support
-
-The Windows ML path is vendor-neutral. Metatron accepts any execution-provider device that Windows ML reports as hardware type `NPU`; known compatible families include:
-
-- Intel NPU via OpenVINO
-- Qualcomm Hexagon NPU via QNN
-- AMD Ryzen AI NPU via VitisAI
-- future NPU EPs exposed through Windows ML device enumeration
-
-GPU fallback supports the execution providers available to the local Windows ML/ONNX Runtime installation. Direct OpenVINO discovery is also supported for Intel systems.
-
-The lightweight core does **not** bundle every vendor runtime. Use `scripts/Setup-WindowsML.ps1` to create an isolated Windows ML runtime, then use the Hardware page to inspect or ensure compatible execution providers.
-
-## Memory goal
-
-The default `strict` profile uses a **2816 MiB hard logical ceiling** for Metatron-managed components. Large workers are lazy and evictable.
-
-Typical policy:
-
-- backend/control plane: ~100–180 MiB target
-- procedural orb: 90 / 180 / 280 MiB reservation (Eco/Balanced/Spectacle)
-- dashboard WebView: ~260 MiB reservation while open
-- one STT model resident
-- S1-mini cleanup only when needed
-- premium TTS only while speaking
-- one local coding agent in Strict mode
-- remote Ezra work does not consume a local agent slot
-- 9B local assistants are refused in Strict mode
-
-These are admission reservations, not fabricated measurements. Metatron replaces estimates with measured process-tree RSS when it owns the process.
-
-## Presence
-
-The floating orb and dashboard orb share a single semantic state model:
-
-- user speech: energy flows **inward**
-- thinking: core condenses and filaments accelerate
-- Metatron speech: golden energy propagates **outward**
-- success / warning / approval / error: transient signal pulses
-
-The renderer is procedural WebGL2: no video loop, no texture pack, no 3D engine, no React runtime.
-
-## Voice
-
-TTS defaults to **important system replies only**.
-
-Provider order:
-
-1. Kokoro-82M ONNX (premium; isolated worker)
-2. Piper (lightweight fallback)
-3. Windows SAPI male voice (zero-download fallback)
-
-TTS is optional and can be disabled. Echo guard suppresses microphone capture while Metatron is speaking, and barge-in can stop TTS immediately.
-
-## Agents
-
-Built-in adapters:
-
-- **E.O.P. / Hermes Local** — existing E.O.P. FastAPI API
-- **Ezra / Hermes Cloud** — same API contract remotely
-- **Codex** — app-server JSON-RPC
-- **Claude Code** — transient headless jobs
-- **OpenCode** — headless HTTP sessions
-
-Metatron exposes explicit Start/Stop/Submit controls. Scheduled actions are visible and persist in SQLite.
-
-## Development
-
-### Backend only
+## Quick start for developers
 
 ```powershell
 python -m pip install -e ".[dev]"
-python -m pytest tests
-python -m metatron.main
+$env:PYTEST_DISABLE_PLUGIN_AUTOLOAD = "1"
+python -W error -m pytest -q
+python scripts\product_audit.py
 ```
 
-The backend uses JSONL on stdin/stdout. Example request:
-
-```json
-{"id":1,"cmd":"status","params":{}}
-```
-
-### Windows ML accelerator runtime
+On a full Windows 11 machine:
 
 ```powershell
-Set-ExecutionPolicy -Scope Process Bypass -Force
-.\scripts\Setup-WindowsML.ps1
-python .\scripts\Verify-WindowsML.py
+powershell -ExecutionPolicy Bypass -File .\scripts\Test-WindowsPrerequisites.ps1 -RequireDevTools
+powershell -ExecutionPolicy Bypass -File .\scripts\Bootstrap-Windows.ps1 -AllRuntimes -Build -Validate
 ```
 
-The setup uses Microsoft's framework-dependent Windows ML Python packages, keeping the Metatron core small.
+The runtime root defaults to `%LOCALAPPDATA%\Metatron`. No optional runtime/model is installed unless the corresponding setup switch is supplied.
 
-### Desktop development
+## Hardware routing
 
-Prerequisites:
-
-- Windows 11 recommended
-- Python 3.11–3.13
-- Rust stable MSVC
-- MSVC C++ Build Tools
-- WebView2
-- Tauri CLI 2.x
-
-Run:
-
-```powershell
-.\scripts\Start-Dev.ps1
-```
-
-### Build installer
-
-```powershell
-.\scripts\Build-Windows.ps1
-```
-
-This packages the Python control plane as a sidecar and builds the Tauri application.
-
-## Settings
-
-The app currently exposes persistent settings for:
-
-- Appearance: pale-red accent, gold, density, reduced motion
-- Presence: quality, desktop/dashboard orb, always-on-top, scale, bloom
-- Voice: TTS toggle, premium/light mode, voice, speed, speech priority
-- Hardware: accelerator order, CPU fallback, adaptive visuals
-- Memory: Strict / Voice / Agent profile
-- Privacy: local telemetry, transcript/audio persistence, cloud-context default
-- Agents: launch confirmations, Kanban behavior, local concurrency
-
-Settings are stored locally in Metatron's SQLite database.
-
-## Privacy
-
-Metatron is local-first. The control plane does not upload telemetry. Remote/cloud agents are separate explicit transports. API keys are expected through environment variables or OS-secure storage in future integrations; they are not written into the task/event database.
-
-## Model weights and third-party assets
-
-This repository does **not** bundle model weights, proprietary execution providers, copyrighted character art, or third-party agent binaries. Setup tools and adapters connect to user-installed runtimes.
-
-The pet subsystem accepts user-provided skins through the future `private-assets`/skin path; copyrighted Flins/Genshin art is intentionally not included in the public repository.
-
-## Repository structure
+Metatron's routing invariant is:
 
 ```text
-metatron/          dependency-light Python control plane
-ui/                framework-free Tauri WebView UI
-renderer/orb/      procedural presence renderer reference
-src-tauri/         native desktop host / Python sidecar bridge
-scripts/           setup, build and benchmark helpers
-tests/             backend unit and protocol tests
-docs/              architecture, NPU, memory and integration docs
+all routable NPUs → all routable GPUs → CPU
 ```
+
+Windows ML support is vendor-neutral by hardware class. Direct OpenVINO remains available for Intel systems. Metatron does not claim accelerator placement merely because a provider appears in a list: real certification requires session creation, warm-up, CPU fallback disable where supported, runtime execution-device evidence, and Windows utilization cross-checks.
+
+## Dictation and personalization
+
+The product layer includes:
+
+- local dictation history with search, pin/delete, retention, app/context/placement metadata;
+- local custom vocabulary with case-insensitive terms and usage ranking;
+- per-app context/privacy rules (`allow`, `no_context`, `pause`);
+- optional runtime capability contracts for foreground-app privacy enforcement and vocabulary/context synchronization;
+- UIPI/injection failure reporting rather than false success;
+- hotkey/button barge-in while echo guard suspends capture.
+
+If a speech sidecar does not implement `active_app`, `set_app_policy`, or `set_personalization`, the UI reports the feature as **policy-only / local-only** rather than pretending it is enforced.
+
+## Voice
+
+TTS stays outside the core process. Premium mode targets Kokoro; light mode can use Piper/Windows voice fallback. TTS speaks important system replies by default and can be disabled completely. The orb reacts to real TTS level events.
+
+## Validation status
+
+The source package includes portable regression tests, Windows CI, a product/security audit, core benchmark, accelerator verifier, speech-runtime verifier, Windows process/GPU memory sampler, pinned release gates, privacy-conscious support bundle, and one-command full-system validation.
+
+The release package clearly distinguishes:
+
+- **portable validated** — tests, protocol, product audit, syntax/config, control-plane benchmark;
+- **implemented but Windows-required** — Tauri host build, Job Objects, DPAPI, WebView2 desktop behavior;
+- **accelerator-gated** — NPU/GPU placement proof, Parakeet latency, power/utilization, hardware-specific model compile/cache behavior.
+
+See `docs/FULL_SYSTEM_VALIDATION.md` and `qualification_thresholds.json`.
+
+## Repository map
+
+```text
+metatron/              Python control plane
+  core.py              application composition / lifecycle
+  memory.py            managed memory broker
+  hardware.py          inventory, routing and placement records
+  speech.py            disposable speech sidecar client
+  tts.py               TTS manager/providers
+  cleanup.py           deterministic + optional semantic cleanup
+  productivity.py      history, vocabulary and app rules
+  diagnostics.py       readiness/runtime inventory
+ui/                    dependency-light WebView2 frontend + orb shader
+src-tauri/             Rust host, window boundaries, bridge, Job Object owner
+scripts/               setup, verification, benchmark, packaging tools
+tests/                 canonical pytest suite
+docs/                  architecture, policy, validation, release docs
+```
+
+## Security model
+
+- CSP is enabled.
+- Main and orb windows are scoped separately.
+- Rust enforces a command allowlist for the dashboard; the orb gets a much smaller allowlist.
+- Managed local HTTP services are loopback-only and use per-launch credentials where supported.
+- Child environments are allowlisted; arbitrary API-key variables are not inherited.
+- Windows secrets use a DPAPI-backed implementation; tests use an in-memory fake.
+- Managed subprocesses are intended to live under a Windows Job Object with `KILL_ON_JOB_CLOSE`.
+
+See `SECURITY.md` and `docs/PRIVACY_AND_HISTORY.md`.
 
 ## License
 
-Metatron source code is released under the MIT License. Third-party models, execution providers, agent CLIs, and user-supplied skins keep their own licenses.
+Metatron source is MIT licensed. Optional models/runtimes keep their own licenses and are not automatically redistributed by this repository. See `THIRD_PARTY.md`, `docs/LICENSE_GATE.md`, and `models.lock.json` before publishing a binary/model bundle.

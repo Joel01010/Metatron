@@ -1,36 +1,43 @@
 # Changelog
 
-## 1.1.0
+## 1.3.0 — Professional product layer
 
-- Made NPU-first routing a fixed invariant: every routable NPU is attempted before any GPU.
-- Added GPU fallback across every routable GPU before optional CPU fallback.
-- Separated hardware detection from runtime routability so Device Manager entries cannot be falsely selected.
-- Windows ML provider setup now prepares all catalog providers by default, allowing future certified NPU EPs without a Metatron source update.
-- Legacy OpenVINO EP routing now pins `device_type=NPU`, then `GPU`, then `CPU` instead of inferring NPU from provider name.
-- Hardware dashboard now distinguishes routable vs detected-only accelerators.
-- Added regression tests for multi-NPU ordering, GPU fallback, and fixed policy enforcement.
+### Product
+- Added first-run onboarding and Ctrl+K command palette.
+- Reworked the dashboard into 12 daily-use workspaces: Home, Dictation, History, Dictionary, Hardware, Models, Voice, Metrics, Tasks, Agents, Diagnostics, Settings.
+- Added local dictation history/recovery with search, pin/delete, retention and placement/context metadata.
+- Added custom vocabulary with usage ranking and per-app context/privacy rules.
+- Added model/runtime readiness center and copyable setup commands.
+- Added diagnostics score/checks and full-Windows qualification entry points.
 
+### Runtime and protocol
+- Database schema v2 with ordered migrations and pre-upgrade backup.
+- Added versioned protocol info and strict JSONL envelope validation.
+- Fixed invalid-request correlation so malformed requests retain a valid supplied request ID.
+- Added optional speech-sidecar capability contracts for active-app privacy and personalization; unsupported runtimes remain explicitly visible.
+- Added history pruning to maintenance.
 
-## v0.4.0 — Procedural Presence + Runtime Pressure Control
+### Desktop security
+- Added explicit Rust-side main-window backend command allowlist; orb remains separately restricted.
+- Product audit verifies UI commands are implemented and authorized.
+- CSP and single-source orb renderer remain release invariants.
 
-- Added a dependency-free **WebGL2 procedural Metatron orb** with pale-red spectral shell and golden volumetric core.
-- Inward user-speech and outward AI-speech animation semantics implemented in the renderer.
-- Adaptive Eco/Balanced/Spectacle resolution and FPS; no video/GIF/Three.js dependency.
-- Added renderer cold-start packet (`presence.renderer_state`).
-- Added `AudioFocusController` with TTS echo suppression, acoustic tail and explicit barge-in.
-- Added `tts.barge_in` and `audio_focus.status` protocol commands.
-- Added OS-level memory-pressure response: unload recomputable workers and degrade orb to Eco.
-- Memory broker made thread-safe for concurrent TTS/maintenance/UI/agent activity.
-- Kokoro setup now defaults to FP16 model-files-v1.1 and supports INT8/FP32 selection.
-- Added TTS benchmark harness with latency, real-time factor and process-tree RSS.
-- Kokoro provisional reservation now adapts to FP16/INT8 filename before real RSS is learned.
-- Added standalone orb demo launcher.
-- 36 tests passing.
+### Qualification
+- Added `Test-WindowsPrerequisites.ps1`, `Bootstrap-Windows.ps1`, `Verify-SpeechRuntime.py`, privacy-conscious support bundles and full-system orchestration.
+- Added Windows private-working-set / private-bytes / system commit / shared-GPU / 3D-engine sampling.
+- Added machine-readable provisional gates in `qualification_thresholds.json` and analyzer tooling.
+- CI runs canonical pytest on Windows + Linux and cargo-checks the Windows host.
 
-## v0.3.0 — Voice Presence
+### Validation
+- Portable suite expanded from the v1.2 baseline to 86 pytest cases.
+- Product/security audit covers 9 release invariants.
+- Linux control-plane benchmark remains well below the 15 ms bridge p95 gate; Windows figures must be measured on a real system.
 
-- Reactive presence/orb state machine.
-- Important-system-only local TTS policy.
-- Kokoro/Piper/SAPI provider stack.
-- Audio envelope events for orb synchronization.
-- TTS settings persistence and memory-aware provider admission.
+## 1.2.0 — Hardened core
+
+- Explicit NPU → GPU → CPU routing and placement truth.
+- Windows ML same-process provider registration/probe path.
+- Async/demultiplex Tauri bridge with bounded push events and 30 Hz latest-wins level coalescing.
+- Windows Job Object ownership, DPAPI secret store, environment allowlisting and one-dir packaging.
+- Placement-aware memory reservations, accelerator timeouts/cache hooks, cross-vendor inventory merge.
+- Procedural reactive orb and isolated TTS / semantic-cleanup workers.

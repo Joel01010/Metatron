@@ -30,7 +30,7 @@ python -m pip install -e ".[dev]"
 
 The build script:
 
-1. creates a build virtual environment on Z: by default
+1. creates a build virtual environment under `%LOCALAPPDATA%\Metatron` by default (overrideable)
 2. runs backend tests
 3. builds the dependency-light backend sidecar with PyInstaller
 4. stages it as a Tauri resource

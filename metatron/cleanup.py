@@ -154,3 +154,60 @@ class S1MiniProvider:
             "S1-mini runtime adapter is not wired yet; benchmark OpenVINO GPU/NPU/CPU first"
         )
 
+
+
+class S1MiniWorkerProvider:
+    """Production control-plane adapter for a disposable S1-mini JSONL worker.
+
+    The model/runtime stays out of the Metatron process. The worker command is
+    supplied by packaging/user configuration and must implement `cleanup`.
+    """
+    def __init__(self, supervisor, config: S1MiniConfig | None = None):
+        self.supervisor = supervisor
+        self.config = config or S1MiniConfig()
+
+    def cleanup(
+        self, text: str, *, context: str = "general", styling: str = "semi-formal", structure: str = "prose"
+    ) -> str:
+        if context not in S1_CONTEXT:
+            context = "general"
+        messages = self.config.messages(text, styling=styling, structure=structure, context=context)
+        result = self.supervisor.request("cleanup", {
+            "text": text,
+            "styling": styling,
+            "structure": structure,
+            "context": context,
+            "messages": messages,
+            "thinking": False,
+            "temperature": 0.0,
+            "max_output_tokens": self.config.output_budget(max(1, len(text.split()))),
+        })
+        if isinstance(result, dict):
+            result = result.get("text", "")
+        return str(result or "").strip()
+
+    def stop(self) -> None:
+        self.supervisor.stop()
+
+
+@dataclass(slots=True)
+class CleanupManager:
+    rules: RuleCleaner
+    semantic: CleanupProvider | None = None
+
+    def cleanup(self, text: str, *, context: str = "general") -> dict[str, object]:
+        decision = self.rules.route(text, context=context)
+        if not decision.needs_model or self.semantic is None:
+            return {
+                "text": decision.text,
+                "semantic_used": False,
+                "semantic_available": self.semantic is not None,
+                "reason": decision.reason,
+            }
+        output = self.semantic.cleanup(decision.text, context=context)
+        return {
+            "text": output,
+            "semantic_used": True,
+            "semantic_available": True,
+            "reason": decision.reason,
+        }

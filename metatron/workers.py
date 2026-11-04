@@ -8,6 +8,9 @@ import threading
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
+
+from .env import child_environment
+from .job import owned_job
 from typing import Any
 
 from .memory import ModelBroker
@@ -34,6 +37,7 @@ class JsonlWorkerSupervisor:
     log_path: str | None = None
     request_timeout_s: float = 30.0
     _proc: subprocess.Popen | None = field(default=None, init=False, repr=False)
+    _job: object | None = field(default=None, init=False, repr=False)
     _reader: threading.Thread | None = field(default=None, init=False, repr=False)
     _stderr: Any = field(default=None, init=False, repr=False)
     _next_id: int = field(default=1, init=False, repr=False)
@@ -58,9 +62,7 @@ class JsonlWorkerSupervisor:
             if self.running:
                 return
             self.broker.load(self.name)
-            merged = os.environ.copy()
-            if self.env:
-                merged.update(self.env)
+            merged = child_environment(extra=self.env or {})
             stderr: Any = subprocess.DEVNULL
             if self.log_path:
                 p = Path(self.log_path)
@@ -90,6 +92,8 @@ class JsonlWorkerSupervisor:
                     bufsize=1,
                     creationflags=creationflags,
                 )
+                self._job = owned_job(f"Metatron-worker-{self.name}")
+                self._job.assign_pid(self._proc.pid)
             except Exception:
                 self.broker.unload(self.name)
                 if self._stderr is not None:
@@ -191,6 +195,8 @@ class JsonlWorkerSupervisor:
         if self._reader is not None and self._reader.is_alive():
             self._reader.join(timeout=1)
         self._reader = None
+        if self._job is not None:
+            self._job.close(); self._job = None
         if self._stderr is not None:
             try:
                 self._stderr.close()

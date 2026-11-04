@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import shlex
+import secrets
 import subprocess
 import time
 import urllib.error
@@ -13,6 +14,8 @@ from pathlib import Path
 from typing import Any
 
 from .base import AgentState, AgentStatus
+from ..env import child_environment
+from ..job import owned_job
 
 
 @dataclass(slots=True)
@@ -39,6 +42,8 @@ class EzerHTTPAdapter:
     _health_error: str | None = field(default=None, init=False, repr=False)
     _health_at: float = field(default=0.0, init=False, repr=False)
     _last_job_id: str | None = field(default=None, init=False, repr=False)
+    _job: object | None = field(default=None, init=False, repr=False)
+    _managed_token: str | None = field(default=None, init=False, repr=False)
 
     def __post_init__(self) -> None:
         self.base_url = self.base_url.rstrip("/")
@@ -135,20 +140,34 @@ class EzerHTTPAdapter:
     def _launch_local(self) -> None:
         if self.remote or not self.start_command:
             return
+        # Managed local agent servers must remain loopback-only. Metatron does
+        # not launch an authenticated control API onto a LAN/WAN interface.
+        parsed = urllib.parse.urlparse(self.base_url)
+        host = (parsed.hostname or "").lower()
+        if host not in {"127.0.0.1", "localhost", "::1"}:
+            raise RuntimeError("managed E.O.P. launch requires a loopback base URL")
         if self._proc is not None and self._proc.poll() is None:
             return
         argv = shlex.split(self.start_command, posix=(os.name != "nt"))
         if not argv:
             raise RuntimeError("E.O.P. start command is empty")
         flags = getattr(subprocess, "CREATE_NO_WINDOW", 0) if os.name == "nt" else 0
+        extra_env = {}
+        if not self.api_key:
+            self._managed_token = secrets.token_urlsafe(32)
+            self.api_key = self._managed_token
+            extra_env["EZEROS_API_KEY"] = self._managed_token
         self._proc = subprocess.Popen(
             argv,
             cwd=self.cwd or None,
+            env=child_environment(extra=extra_env),
             stdin=subprocess.DEVNULL,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
             creationflags=flags,
         )
+        self._job = owned_job(f"Metatron-{self.id}")
+        self._job.assign_pid(self._proc.pid)
 
     def start(self) -> AgentStatus:
         if self.detect()["available"]:
@@ -187,6 +206,8 @@ class EzerHTTPAdapter:
                 self._proc.kill()
                 self._proc.wait(timeout=2)
         self._proc = None
+        if self._job is not None:
+            self._job.close(); self._job = None
         self._health_cache = None
         self._health_error = None
         self._health_at = 0.0

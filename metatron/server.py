@@ -4,6 +4,7 @@ from typing import Any
 
 from .core import Metatron
 from .models import model_catalog
+from . import __version__
 
 
 class ProtocolError(RuntimeError):
@@ -17,7 +18,14 @@ class Dispatcher:
         self.app = app
 
     def dispatch(self, cmd: str, params: dict[str, Any] | None = None) -> Any:
+        if params is not None and not isinstance(params, dict):
+            raise ProtocolError("invalid_params", "command params must be an object")
         p = dict(params or {})
+        if cmd == "protocol.info":
+            return {"protocol_version":2,"app_version":__version__,"transport":"jsonl-request-id+push-events",
+                    "features":["bounded-push-events","latest-wins-audio-levels","settings-v2","history-v1","vocabulary-v1","app-rules-v1","runtime-inventory-v1","accelerator-placement-truth-v1","strict-memory-governor-v1"],
+                    "certified_core":["dictation","presence","memory-governor","accelerator-placement"],
+                    "experimental":["agents","scheduler","semantic-cleanup"]}
         if cmd == "status":
             return self.app.status()
         if cmd == "maintenance.tick":
@@ -28,8 +36,30 @@ class Dispatcher:
             return self.app.bus.live_tail(int(p.get("after_live_seq", 0)), int(p.get("limit", 256)))
         if cmd == "telemetry.latest":
             return self.app.telemetry.latest(int(p.get("limit", 100)))
-        if cmd == "models.catalog":
-            return model_catalog()
+        if cmd == "models.catalog": return model_catalog()
+        if cmd == "models.runtime_status": return self.app.diagnostics.runtime_inventory()
+        if cmd == "cleanup.text": return self.app.cleanup.cleanup(str(p.get("text") or ""), context=str(p.get("context") or "general"))
+        if cmd == "diagnostics.summary": return self.app.diagnostics.summary()
+        if cmd == "history.list": return self.app.history.list(limit=int(p.get("limit",100)),offset=int(p.get("offset",0)),query=str(p.get("query") or ""),status=str(p.get("status") or ""),app_id=str(p.get("app_id") or ""),pinned_only=bool(p.get("pinned_only",False)))
+        if cmd == "history.stats": return self.app.history.stats()
+        if cmd == "history.pin": return self.app.history.set_pinned(str(p["id"]),bool(p.get("pinned",True)))
+        if cmd == "history.delete": return {"deleted":self.app.history.delete(str(p["id"]))}
+        if cmd == "history.clear": return {"deleted":self.app.history.clear(keep_pinned=bool(p.get("keep_pinned",True)))}
+        if cmd == "history.record": return self.app.history.record(str(p.get("text") or ""),raw_text=str(p.get("raw_text") or ""),app_id=str(p.get("app_id") or ""),app_name=str(p.get("app_name") or ""),context_profile=str(p.get("context_profile") or "general"),status=str(p.get("status") or "completed"),metadata=dict(p.get("metadata") or {}))
+        if cmd == "vocabulary.list": return self.app.vocabulary.list(query=str(p.get("query") or ""),limit=int(p.get("limit",500)))
+        if cmd == "vocabulary.upsert":
+            result=self.app.vocabulary.upsert(str(p.get("term") or ""),replacement=str(p.get("replacement") or ""),notes=str(p.get("notes") or ""),enabled=bool(p.get("enabled",True)))
+            if self.app.speech.running: self.app.speech.refresh_personalization()
+            return result
+        if cmd == "vocabulary.delete":
+            deleted=self.app.vocabulary.delete(str(p["id"]))
+            if deleted and self.app.speech.running: self.app.speech.refresh_personalization()
+            return {"deleted":deleted}
+        if cmd == "vocabulary.enabled": return self.app.vocabulary.enabled_terms(limit=int(p.get("limit",1000)))
+        if cmd == "app_rules.list": return self.app.app_rules.list()
+        if cmd == "app_rules.evaluate": return self.app.app_rules.evaluate(str(p.get("app_id") or ""))
+        if cmd == "app_rules.upsert": return self.app.app_rules.upsert(str(p.get("app_id") or ""),label=str(p.get("label") or ""),privacy_action=str(p.get("privacy_action") or "allow"),context_profile=str(p.get("context_profile") or "general"),enabled=bool(p.get("enabled",True)),metadata=dict(p.get("metadata") or {}))
+        if cmd == "app_rules.delete": return {"deleted":self.app.app_rules.delete(str(p["app_id"]))}
 
         if cmd == "speech.status":
             return self.app.speech.status()
@@ -95,12 +125,44 @@ class Dispatcher:
                     self.app.speech.stop()
                     if self.app.speech.settings.enabled:
                         self.app.speech.start()
+            elif section == "dictation":
+                self.app.speech.settings.privacy_pause_enabled=bool(result.get("privacy_pause_enabled",True))
+                self.app.speech.settings.context_awareness=bool(result.get("context_awareness",True))
+                self.app.speech.settings.dictionary_enabled=bool(result.get("dictionary_enabled",True))
+                self.app.speech.settings.default_context_profile=str(result.get("default_context_profile","general"))
+                if self.app.speech.running: self.app.speech.refresh_personalization()
             elif section == "voice":
                 self.app.tts.set_enabled(bool(result.get("tts_enabled", True)))
                 self.app.tts.set_mode(str(result.get("tts_mode", "premium")))
                 self.app.tts.set_threshold(int(result.get("tts_priority_threshold", 3)))
                 self.app.tts.set_voice(str(result.get("tts_voice", "am_fenrir")), float(result.get("tts_speed", 0.96)))
+                # Echo guard and barge-in live in the audio-focus controller so
+                # changing them does not require restarting the ML/TTS worker.
+                self.app.audio_focus.suppress_during_tts = bool(result.get("echo_guard", True))
+                self.app.audio_focus.barge_in = bool(result.get("barge_in", True))
+                self.app.audio_focus.tail_ms = max(0, min(2000, int(result.get("capture_tail_ms", 280))))
             return result
+        if cmd == "secrets.status":
+            return {
+                "eop_api_key": bool(self.app.secrets.get("eop_api_key")),
+                "ezra_api_key": bool(self.app.secrets.get("ezra_api_key")),
+            }
+        if cmd == "secrets.set":
+            key = str(p.get("key") or "")
+            if key not in {"eop_api_key", "ezra_api_key"}:
+                raise ProtocolError("invalid_secret", "unsupported secret key")
+            value = str(p.get("value") or "")
+            if not value:
+                raise ProtocolError("invalid_secret", "secret value cannot be empty")
+            self.app.secrets.set(key, value)
+            return {"stored": True, "key": key}
+        if cmd == "secrets.delete":
+            key = str(p.get("key") or "")
+            if key not in {"eop_api_key", "ezra_api_key"}:
+                raise ProtocolError("invalid_secret", "unsupported secret key")
+            self.app.secrets.delete(key)
+            return {"deleted": True, "key": key}
+
         if cmd == "settings.reset":
             return self.app.settings.reset(p.get("section"))
 

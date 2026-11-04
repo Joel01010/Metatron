@@ -62,6 +62,59 @@ def process_rss_mib(pid: int | None = None) -> float | None:
     return None
 
 
+
+def process_private_commit_mib(pid: int | None = None) -> float | None:
+    """Best-effort committed private bytes (Windows PROCESS_MEMORY_COUNTERS_EX.PrivateUsage).
+
+    This is deliberately named *private commit*, not private working set. It is
+    useful alongside working-set and system commit deltas; none of these alone
+    captures iGPU/shared-driver memory.
+    """
+    pid = os.getpid() if pid is None else int(pid)
+    if os.name != "nt":
+        return None
+    try:
+        import ctypes
+        from ctypes import wintypes
+        PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+        PROCESS_VM_READ = 0x0010
+
+        class PROCESS_MEMORY_COUNTERS_EX(ctypes.Structure):
+            _fields_ = [
+                ("cb", wintypes.DWORD), ("PageFaultCount", wintypes.DWORD),
+                ("PeakWorkingSetSize", ctypes.c_size_t), ("WorkingSetSize", ctypes.c_size_t),
+                ("QuotaPeakPagedPoolUsage", ctypes.c_size_t), ("QuotaPagedPoolUsage", ctypes.c_size_t),
+                ("QuotaPeakNonPagedPoolUsage", ctypes.c_size_t), ("QuotaNonPagedPoolUsage", ctypes.c_size_t),
+                ("PagefileUsage", ctypes.c_size_t), ("PeakPagefileUsage", ctypes.c_size_t),
+                ("PrivateUsage", ctypes.c_size_t),
+            ]
+        handle = ctypes.windll.kernel32.OpenProcess(
+            PROCESS_QUERY_LIMITED_INFORMATION | PROCESS_VM_READ, False, pid
+        )
+        if not handle:
+            return None
+        try:
+            counters = PROCESS_MEMORY_COUNTERS_EX()
+            counters.cb = ctypes.sizeof(counters)
+            if ctypes.windll.psapi.GetProcessMemoryInfo(handle, ctypes.byref(counters), counters.cb):
+                return counters.PrivateUsage / 1024 / 1024
+        finally:
+            ctypes.windll.kernel32.CloseHandle(handle)
+    except Exception:
+        return None
+    return None
+
+
+def process_tree_private_commit_mib(root_pid: int) -> float | None:
+    total = 0.0
+    found = False
+    for pid in process_tree_pids(root_pid):
+        value = process_private_commit_mib(pid)
+        if value is not None:
+            total += value
+            found = True
+    return total if found else None
+
 def _process_parent_map() -> dict[int, list[int]]:
     """Return parent -> child PID map using native OS primitives only."""
     parents: dict[int, list[int]] = defaultdict(list)
@@ -173,10 +226,14 @@ def system_memory() -> dict[str, float | None]:
             st = MEMORYSTATUSEX()
             st.dwLength = ctypes.sizeof(st)
             if ctypes.windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(st)):
+                total_commit = st.ullTotalPageFile / 1024 / 1024
+                avail_commit = st.ullAvailPageFile / 1024 / 1024
                 return {
                     "total_mib": st.ullTotalPhys / 1024 / 1024,
                     "available_mib": st.ullAvailPhys / 1024 / 1024,
                     "used_pct": float(st.dwMemoryLoad),
+                    "commit_limit_mib": total_commit,
+                    "commit_used_mib": total_commit - avail_commit,
                 }
         except Exception:
             pass
@@ -246,10 +303,13 @@ class Telemetry:
 
     def sample_core(self, persist: bool = True) -> dict[str, Any]:
         rss = process_rss_mib()
+        private_commit = process_private_commit_mib()
         mem = system_memory()
         if persist and rss is not None:
-            self.record("metatron", "rss", rss, "MiB")
-        return {"rss_mib": rss, "system_memory": mem}
+            self.record("metatron", "working_set", rss, "MiB")
+        if persist and private_commit is not None:
+            self.record("metatron", "private_commit", private_commit, "MiB")
+        return {"working_set_mib": rss, "rss_mib": rss, "private_commit_mib": private_commit, "system_memory": mem}
 
     def latest(self, limit: int = 100) -> list[dict[str, Any]]:
         self.flush()

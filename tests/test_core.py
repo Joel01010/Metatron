@@ -30,6 +30,7 @@ class CoreTests(unittest.TestCase):
     def test_strict_tts_prefers_evicting_cleanup_over_dashboard_or_orb(self):
         with tempfile.TemporaryDirectory() as td:
             app = Metatron(AppConfig(data_dir=Path(td), enable_background_maintenance=False, tts_enabled=False))
+            app.memory.set_placement("parakeet-unified-en-0.6b", "NPU")
             app.memory.load("parakeet-unified-en-0.6b")
             app.memory.load("s1-mini-by-superwhisper")
             app.memory.load("dashboard-webview")

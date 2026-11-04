@@ -4,8 +4,11 @@ on:
   pull_request:
 
 jobs:
-  backend:
-    runs-on: windows-latest
+  python:
+    strategy:
+      matrix:
+        os: [windows-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -13,24 +16,53 @@ jobs:
           python-version: '3.12'
       - name: Install test dependencies
         run: python -m pip install -e ".[dev]"
-      - name: Python tests
-        run: python -m pytest -q
+      - name: Canonical pytest suite
+        env:
+          PYTEST_DISABLE_PLUGIN_AUTOLOAD: '1'
+        run: python -W error -m pytest -q
       - name: Python compile check
         run: python -m compileall -q metatron scripts tests
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
       - name: UI syntax
-        shell: pwsh
+        shell: bash
         run: |
           node --check ui/app.js
+          node --check ui/orb.js
           node --check ui/orb-renderer.js
+      - name: Product/release static audit
+        run: python scripts/product_audit.py --json-out product-audit.json
+      - name: Validate JSON configuration
+        shell: bash
+        run: python -c "import json,pathlib; [json.loads(p.read_text()) for p in pathlib.Path('src-tauri').rglob('*.json')]"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: product-audit-${{ matrix.os }}
+          path: product-audit.json
 
-  rust:
+  windows-host:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install Python test dependencies
+        run: python -m pip install -e ".[dev]"
       - uses: dtolnay/rust-toolchain@stable
-      - name: Tauri host check
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Tauri host cargo check
         working-directory: src-tauri
         run: cargo check
+      - name: Windows validation harness smoke
+        shell: pwsh
+        run: ./scripts/Invoke-MetatronFullValidation.ps1 -SkipAccelerators -SkipSpeech -SkipTTS -OutputDir build/ci-validation
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: windows-validation
+          path: build/ci-validation

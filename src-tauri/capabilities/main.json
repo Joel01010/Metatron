@@ -1,0 +1,12 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "main-capability",
+  "description": "Dashboard authority: guarded backend commands, window controls and event subscription.",
+  "windows": ["main"],
+  "permissions": [
+    "allow-backend-command",
+    "allow-window-command",
+    "core:event:default",
+    "core:window:default"
+  ]
+}

@@ -28,7 +28,7 @@ Off mode synthesizes nothing and unloads TTS runtimes.
 Example:
 
 ```powershell
-.\scripts\Setup-Kokoro-TTS.ps1 -Root 'Z:\Metatron' -Precision fp16
+.\scripts\Setup-Kokoro-TTS.ps1 -Precision fp16
 ```
 
 ## Echo guard / barge-in
@@ -42,7 +42,7 @@ playback ends -> short acoustic tail -> speech.capture.resumed
 
 Default tail: 280 ms.
 
-If the host explicitly detects the user speaking over Metatron, call:
+Voice-detected barge-in is not enabled while echo guard suppresses capture. For the certified core, barge-in is an explicit hotkey/button action; call:
 
 ```text
 tts.barge_in

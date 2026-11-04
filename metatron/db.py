@@ -4,12 +4,15 @@ import json
 import sqlite3
 import threading
 import time
+import shutil
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Iterable, Iterator
 
 
-SCHEMA = """
+CURRENT_SCHEMA_VERSION = 2
+
+SCHEMA_V1 = """
 PRAGMA journal_mode=WAL;
 PRAGMA synchronous=NORMAL;
 PRAGMA foreign_keys=ON;
@@ -114,6 +117,59 @@ CREATE INDEX IF NOT EXISTS idx_task_runs_lease ON task_runs(state, lease_expires
 CREATE INDEX IF NOT EXISTS idx_telemetry_ts ON telemetry(ts);
 """
 
+SCHEMA_V2 = """
+CREATE TABLE IF NOT EXISTS dictation_history (
+  id TEXT PRIMARY KEY,
+  created_at REAL NOT NULL,
+  updated_at REAL NOT NULL,
+  raw_text TEXT NOT NULL DEFAULT '',
+  text TEXT NOT NULL DEFAULT '',
+  app_id TEXT NOT NULL DEFAULT '',
+  app_name TEXT NOT NULL DEFAULT '',
+  context_profile TEXT NOT NULL DEFAULT 'general',
+  language TEXT NOT NULL DEFAULT 'en',
+  model TEXT NOT NULL DEFAULT '',
+  device_kind TEXT NOT NULL DEFAULT '',
+  provider TEXT NOT NULL DEFAULT '',
+  status TEXT NOT NULL DEFAULT 'completed',
+  duration_ms REAL,
+  error TEXT NOT NULL DEFAULT '',
+  pinned INTEGER NOT NULL DEFAULT 0,
+  audio_path TEXT NOT NULL DEFAULT '',
+  metadata_json TEXT NOT NULL DEFAULT '{}'
+);
+
+CREATE TABLE IF NOT EXISTS vocabulary (
+  id TEXT PRIMARY KEY,
+  term TEXT NOT NULL COLLATE NOCASE,
+  replacement TEXT NOT NULL DEFAULT '',
+  notes TEXT NOT NULL DEFAULT '',
+  enabled INTEGER NOT NULL DEFAULT 1,
+  usage_count INTEGER NOT NULL DEFAULT 0,
+  created_at REAL NOT NULL,
+  updated_at REAL NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS app_rules (
+  app_id TEXT PRIMARY KEY COLLATE NOCASE,
+  label TEXT NOT NULL DEFAULT '',
+  privacy_action TEXT NOT NULL DEFAULT 'allow',
+  context_profile TEXT NOT NULL DEFAULT 'general',
+  enabled INTEGER NOT NULL DEFAULT 1,
+  metadata_json TEXT NOT NULL DEFAULT '{}',
+  created_at REAL NOT NULL,
+  updated_at REAL NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_dictation_history_created ON dictation_history(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_dictation_history_app ON dictation_history(app_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_dictation_history_status ON dictation_history(status, created_at DESC);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_vocabulary_term ON vocabulary(term COLLATE NOCASE);
+CREATE INDEX IF NOT EXISTS idx_app_rules_action ON app_rules(privacy_action);
+"""
+
+MIGRATIONS = {1: SCHEMA_V1, 2: SCHEMA_V2}
+
 
 class Database:
     def __init__(self, path: Path):
@@ -124,8 +180,60 @@ class Database:
         # transactions for multi-step mutations.
         self._conn = sqlite3.connect(self.path, check_same_thread=False, isolation_level=None)
         self._conn.row_factory = sqlite3.Row
+        try:
+            with self._lock:
+                self._migrate_locked()
+        except Exception:
+            # Constructor failures must not leak an open SQLite handle. This is
+            # particularly important when rejecting a future schema version.
+            self._conn.close()
+            raise
+
+
+    def _user_version_locked(self) -> int:
+        row = self._conn.execute("PRAGMA user_version").fetchone()
+        return int(row[0] if row else 0)
+
+    def _backup_before_migration(self, from_version: int) -> Path | None:
+        # Fresh databases need no backup. Existing DBs are copied before any
+        # schema mutation so an interrupted upgrade is recoverable.
+        if not self.path.exists() or self.path.stat().st_size == 0:
+            return None
+        stamp = time.strftime("%Y%m%d-%H%M%S", time.gmtime())
+        target = self.path.with_name(f"{self.path.name}.v{from_version}.backup-{stamp}")
+        # SQLite backup API gives a consistent copy even in WAL mode.
+        dst = sqlite3.connect(target)
+        try:
+            self._conn.backup(dst)
+        finally:
+            dst.close()
+        return target
+
+    def _migrate_locked(self) -> None:
+        version = self._user_version_locked()
+        if version > CURRENT_SCHEMA_VERSION:
+            raise RuntimeError(
+                f"database schema v{version} is newer than this Metatron build (v{CURRENT_SCHEMA_VERSION})"
+            )
+        if version < CURRENT_SCHEMA_VERSION:
+            has_user_tables = bool(self._conn.execute(
+                "SELECT 1 FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' LIMIT 1"
+            ).fetchone())
+            if has_user_tables:
+                self._backup_before_migration(version)
+            for target in range(version + 1, CURRENT_SCHEMA_VERSION + 1):
+                script = MIGRATIONS.get(target)
+                if script is None:
+                    raise RuntimeError(f"missing database migration for schema v{target}")
+                self._conn.executescript(script)
+                self._conn.execute(f"PRAGMA user_version={target}")
+        else:
+            self._conn.executescript(MIGRATIONS[CURRENT_SCHEMA_VERSION])
+
+    @property
+    def schema_version(self) -> int:
         with self._lock:
-            self._conn.executescript(SCHEMA)
+            return self._user_version_locked()
 
     def close(self) -> None:
         with self._lock:

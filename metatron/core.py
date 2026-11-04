@@ -26,6 +26,11 @@ from .agents.opencode import OpenCodeAdapter
 from .hardware import HardwareManager
 from .settings import SettingsStore
 from .speech import SpeechRuntime, SpeechSettings, speech_command_from_env
+from .cleanup import CleanupManager, RuleCleaner, S1MiniWorkerProvider
+from .workers import JsonlWorkerSupervisor
+from .secret_store import DPAPISecretStore, MemorySecretStore
+from .productivity import DictationHistory, VocabularyStore, AppRuleStore
+from .diagnostics import DiagnosticsService
 
 
 class Metatron:
@@ -40,6 +45,19 @@ class Metatron:
         self.scheduler = Scheduler(self.db, self.bus)
         self.telemetry = Telemetry(self.db, self.config.telemetry_retention_h)
         self.settings = SettingsStore(self.db, self.bus)
+        self.history = DictationHistory(self.db, self.bus)
+        self.vocabulary = VocabularyStore(self.db, self.bus)
+        self.app_rules = AppRuleStore(self.db, self.bus)
+        try:
+            self.secrets = DPAPISecretStore(self.config.data_dir / "secrets")
+        except RuntimeError:
+            self.secrets = MemorySecretStore()
+        # Environment variables still override the secure store for deployment
+        # automation, but ordinary persisted secrets never enter SQLite.
+        if not self.config.eop_api_key:
+            self.config.eop_api_key = self.secrets.get("eop_api_key")
+        if not self.config.ezra_api_key:
+            self.config.ezra_api_key = self.secrets.get("ezra_api_key")
         self.hardware = HardwareManager(self.db, self.bus, winml_python=self.config.winml_python)
         self.memory = self._build_memory_broker(self.config.memory_profile)
         self.presence = PresenceController(self.bus)
@@ -50,12 +68,15 @@ class Metatron:
         )
         self.tts = self._build_tts_manager()
         self.speech = self._build_speech_manager()
+        self.cleanup = self._build_cleanup_manager()
         if self.speech.settings.auto_start and self.speech.configured:
             threading.Thread(target=self._start_speech_safely, name="speech-autostart", daemon=True).start()
         self.agents = AgentRegistry()
         self._register_default_agents()
         self._bind_agent_eviction_hooks()
         self._sync_agents_to_db()
+        self.diagnostics = DiagnosticsService(self)
+        self._product_unsubscribe = self.bus.subscribe(self._handle_product_event)
         self._stop = threading.Event()
         self._maintenance: threading.Thread | None = None
         if self.config.enable_background_maintenance:
@@ -96,6 +117,13 @@ class Metatron:
                 exclusive_group=spec.exclusive_group,
                 metadata={"role": spec.role, "runtime": spec.runtime},
             ))
+        # Placement-aware provisional reservations. Until real Windows p95
+        # measurements are recorded, admission uses the worst candidate so a
+        # CPU fallback cannot silently blow past an NPU-sized reservation.
+        broker.set_placement_estimates("parakeet-unified-en-0.6b", {"NPU": 1050, "GPU": 1250, "CPU": 1600})
+        broker.set_placement_estimates("orukeet-int8", {"NPU": 900, "GPU": 1100, "CPU": 1450})
+        broker.set_placement_estimates("s1-mini-by-superwhisper", {"NPU": 600, "GPU": 650, "CPU": 800})
+
         # E.O.P. is a local orchestration service, not a coding-agent slot.
         # It may remain connected while one coding agent executes underneath it.
         broker.register(Reservation(
@@ -105,8 +133,8 @@ class Metatron:
         ))
         # Coding runtimes are mutually constrained by max_local_agents. Their
         # estimates are replaced by measured process-tree RSS while running.
-        for name, mib in (("agent:codex", 180), ("agent:claude-code", 220),
-                          ("agent:opencode", 240)):
+        for name, mib in (("agent:codex", 384), ("agent:claude-code", 512),
+                          ("agent:opencode", 512)):
             broker.register(Reservation(
                 name=name, estimated_mib=mib, evictable=True, priority=80,
                 idle_unload_s=None, exclusive_group="local-agent",
@@ -162,15 +190,58 @@ class Metatron:
                 injection_method=str(speech_cfg.get("injection_method", self.config.speech_injection_method)),
                 mode=str(speech_cfg.get("mode", self.config.speech_mode)),
                 hotkey=str(speech_cfg.get("hotkey", self.config.speech_hotkey)),
+                privacy_pause_enabled=bool((self.settings.get("dictation") or {}).get("privacy_pause_enabled", True)),
+                context_awareness=bool((self.settings.get("dictation") or {}).get("context_awareness", True)),
+                dictionary_enabled=bool((self.settings.get("dictation") or {}).get("dictionary_enabled", True)),
+                default_context_profile=str((self.settings.get("dictation") or {}).get("default_context_profile", "general")),
             ),
             log_path=str(self.config.data_dir / "logs" / "speech.log"),
+            app_policy=self.app_rules.evaluate,
+            vocabulary_provider=lambda: self.vocabulary.enabled_terms(limit=1000),
         )
+
+    def _build_cleanup_manager(self) -> CleanupManager:
+        command = []
+        raw = str(self.config.s1_command or "").strip()
+        if raw:
+            import shlex, os
+            command = shlex.split(raw, posix=os.name != "nt")
+        if not command:
+            return CleanupManager(RuleCleaner(), None)
+        worker = JsonlWorkerSupervisor(
+            name="s1-mini-by-superwhisper", command=command, broker=self.memory,
+            log_path=str(self.config.data_dir / "logs" / "s1-mini.log"), request_timeout_s=30.0,
+        )
+        return CleanupManager(RuleCleaner(), S1MiniWorkerProvider(worker))
 
     def _start_speech_safely(self) -> None:
         try:
             self.speech.start()
         except Exception as exc:
             self.bus.emit("speech.runtime.error", "speech", {"error": str(exc)})
+
+    def _handle_product_event(self, event: Any) -> None:
+        if event.topic != "speech.transcript.final":
+            return
+        privacy = self.settings.get("privacy") or {}
+        if not bool(privacy.get("save_transcripts", False)):
+            return
+        payload = dict(event.payload or {})
+        text = str(payload.get("text") or "")
+        if not text:
+            return
+        actual = self.speech.status().get("actual_device") or {}
+        self.history.record(
+            text, raw_text=str(payload.get("raw_text") or ""),
+            app_id=str(payload.get("app_id") or ""), app_name=str(payload.get("app_name") or ""),
+            context_profile=str(payload.get("context_profile") or "general"),
+            language=str(payload.get("language") or "en"), model=str(payload.get("model") or self.speech.settings.model),
+            device_kind=str(actual.get("kind") or payload.get("device_kind") or ""), provider=str(actual.get("provider") or payload.get("provider") or ""),
+            status=str(payload.get("status") or "completed"), duration_ms=payload.get("duration_ms"),
+            error=str(payload.get("error") or ""), metadata={"injection_method": self.speech.settings.injection_method},
+        )
+        if bool((self.settings.get("dictation") or {}).get("dictionary_enabled", True)):
+            self.vocabulary.observe_text(text)
 
     def _register_default_agents(self) -> None:
         logs = str(self.config.data_dir / "logs")
@@ -241,6 +312,9 @@ class Metatron:
                 if now_wall >= next_prune:
                     self.telemetry.prune(now_wall)
                     self.db.prune_events(self.config.event_retention)
+                    dcfg = self.settings.get("dictation") or {}
+                    pruned_history = self.history.prune(max_items=int(dcfg.get("history_max_items",5000)), older_than_days=int(dcfg.get("history_days",30)))
+                    if pruned_history: self.bus.emit("history.pruned","maintenance",{"count":pruned_history})
                     next_prune = now_wall + 900
             except Exception as exc:
                 self.bus.emit("maintenance.error", "core", {"error": type(exc).__name__, "message": str(exc)[:500]})
@@ -422,11 +496,16 @@ class Metatron:
                 except Exception:
                     pass
         self.speech.close()
+        semantic = getattr(self.cleanup, "semantic", None)
+        if semantic is not None and hasattr(semantic, "stop"):
+            try: semantic.stop()
+            except Exception: pass
         self.tts.close()
         self.memory = new_broker
         self._bind_agent_eviction_hooks()
         self.tts = self._build_tts_manager()
         self.speech = self._build_speech_manager()
+        self.cleanup = self._build_cleanup_manager()
         if self.speech.settings.auto_start and self.speech.configured:
             threading.Thread(target=self._start_speech_safely, name="speech-autostart", daemon=True).start()
         self.bus.emit("memory.profile", "core", {"profile": profile_name})
@@ -442,14 +521,22 @@ class Metatron:
         expired = self.approvals.expire(now_wall)
         leases = self.runs.release_expired(now_wall)
         tasks = self._materialize_due_schedules(now_wall)
+        dcfg = self.settings.get("dictation") or {}
+        pruned_history = self.history.prune(max_items=int(dcfg.get("history_max_items",5000)), older_than_days=int(dcfg.get("history_days",30)))
         pressure = self.apply_system_pressure()
-        return {"evicted": evicted, "expired_approvals": expired, "released_leases": leases, "scheduled_tasks": tasks, "pressure": pressure}
+        return {"evicted": evicted, "expired_approvals": expired, "released_leases": leases, "scheduled_tasks": tasks, "pruned_history": pruned_history, "pressure": pressure}
 
     def close(self) -> None:
         self._stop.set()
+        try: self._product_unsubscribe()
+        except Exception: pass
         if self._maintenance and self._maintenance.is_alive():
             self._maintenance.join(timeout=2)
         self.speech.close()
+        semantic = getattr(self.cleanup, "semantic", None)
+        if semantic is not None and hasattr(semantic, "stop"):
+            try: semantic.stop()
+            except Exception: pass
         self.tts.close()
         self.audio_focus.close()
         self.agents.stop_all()
@@ -512,6 +599,7 @@ class Metatron:
             "speech": self.speech.status(),
             "agents": self.agents.list(),
             "models": model_catalog(),
+            "history_stats": self.history.stats(),
             "tasks": self.kanban.counts(),
             "pending_approvals": self.approvals.count_pending(),
         }

@@ -1,0 +1,9 @@
+[[permission]]
+identifier = "allow-backend-command"
+description = "Allows the Metatron frontend to call the guarded backend bridge command."
+commands.allow = ["backend_command"]
+
+[[permission]]
+identifier = "allow-window-command"
+description = "Allows the Metatron frontend to call the guarded window command."
+commands.allow = ["window_command"]

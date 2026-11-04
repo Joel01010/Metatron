@@ -6,6 +6,9 @@ import subprocess
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
+
+from ..env import child_environment
+from ..job import owned_job
 from typing import Any, BinaryIO
 
 from .base import AgentState, AgentStatus
@@ -22,6 +25,7 @@ class ProcessAdapter:
     env: dict[str, str] | None = None
     log_dir: str | None = None
     _proc: subprocess.Popen | None = field(default=None, init=False, repr=False)
+    _job: object | None = field(default=None, init=False, repr=False)
     _log: BinaryIO | None = field(default=None, init=False, repr=False)
     _detect_cache: dict[str, Any] | None = field(default=None, init=False, repr=False)
     _detect_at: float = field(default=0.0, init=False, repr=False)
@@ -69,9 +73,7 @@ class ProcessAdapter:
         detected = self.detect()
         if not detected["available"]:
             return AgentStatus(self.id, self.label, self.kind, AgentState.ERROR, "executable not found")
-        merged_env = os.environ.copy()
-        if self.env:
-            merged_env.update(self.env)
+        merged_env = child_environment(extra=self.env or {})
         creationflags = 0
         if os.name == "nt":
             creationflags |= getattr(subprocess, "CREATE_NO_WINDOW", 0)
@@ -86,6 +88,8 @@ class ProcessAdapter:
             stderr=subprocess.STDOUT,
             creationflags=creationflags,
         )
+        self._job = owned_job(f"Metatron-{self.id}")
+        self._job.assign_pid(self._proc.pid)
         return self.status()
 
     def stop(self) -> AgentStatus:
@@ -96,6 +100,8 @@ class ProcessAdapter:
             except subprocess.TimeoutExpired:
                 self._proc.kill()
                 self._proc.wait(timeout=2)
+        if self._job is not None:
+            self._job.close(); self._job = None
         if self._log is not None:
             try:
                 self._log.close()

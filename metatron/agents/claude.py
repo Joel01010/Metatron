@@ -10,6 +10,8 @@ from pathlib import Path
 from typing import Any
 
 from .base import AgentState, AgentStatus
+from ..env import child_environment
+from ..job import owned_job
 
 
 @dataclass(slots=True)
@@ -32,6 +34,7 @@ class ClaudeCodeAdapter:
     _result_path: Path | None = field(default=None, init=False, repr=False)
     _stderr_path: Path | None = field(default=None, init=False, repr=False)
     _last_result: dict[str, Any] | None = field(default=None, init=False, repr=False)
+    _job: object | None = field(default=None, init=False, repr=False)
 
     def detect(self) -> dict[str, Any]:
         exe = shutil.which(self.executable) or (self.executable if Path(self.executable).exists() else None)
@@ -84,14 +87,15 @@ class ClaudeCodeAdapter:
         self._last_result = None
         out = open(self._result_path, "wb")
         err = open(self._stderr_path, "wb")
-        merged = os.environ.copy()
-        if self.env: merged.update(self.env)
+        merged = child_environment(extra=self.env or {})
         flags = getattr(subprocess, "CREATE_NO_WINDOW", 0) if os.name == "nt" else 0
         try:
             self._proc = subprocess.Popen(
                 cmd, cwd=str(task.get("cwd") or self.cwd) if (task.get("cwd") or self.cwd) else None,
                 env=merged, stdin=subprocess.DEVNULL, stdout=out, stderr=err, creationflags=flags,
             )
+            self._job = owned_job("Metatron-claude")
+            self._job.assign_pid(self._proc.pid)
         finally:
             # Popen duplicates/owns child handles; parent does not retain them.
             out.close(); err.close()
@@ -120,4 +124,6 @@ class ClaudeCodeAdapter:
             try: self._proc.wait(timeout=5)
             except subprocess.TimeoutExpired:
                 self._proc.kill(); self._proc.wait(timeout=2)
+        if self._job is not None:
+            self._job.close(); self._job = None
         return self.status()

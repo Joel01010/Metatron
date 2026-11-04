@@ -38,6 +38,13 @@
   uniform float uSignal;
   uniform float uQuality;
   uniform vec2 uPointer;
+  uniform vec3 uAccent;
+  uniform vec3 uGold;
+  uniform float uOrbScale;
+  uniform float uBloom;
+  uniform float uPlasma;
+  uniform float uParticles;
+  uniform float uInteractionGain;
 
   #define PI 3.14159265359
   float hash21(vec2 p){ p=fract(p*vec2(123.34,456.21)); p+=dot(p,p+45.32); return fract(p.x*p.y); }
@@ -71,18 +78,19 @@
   }
 
   vec3 spectral(vec3 p, float radial){
-    float speak=max(uUser,uAI);
+    float speak=max(uUser,uAI)*uInteractionGain;
     float turbulence=fbm(rotY(p*3.3,uTime*.12)+vec3(0,uTime*.16,0));
+    turbulence=mix(.5,turbulence,clamp(uPlasma,0.0,1.5));
     float shellNoise=(turbulence-.5)*(.11+.11*speak);
     float shell=exp(-42.0*abs(radial-(.74+shellNoise)));
     float inner=exp(-7.5*radial*radial);
     float core=exp(-18.0*radial*radial)*(1.0+.55*uAI+.35*uSignal);
     float veins=pow(max(0.0,fbm(p*6.5+uTime*.09)-.57),2.0)*4.5*exp(-2.0*radial);
     float rings=filament(rotX(p,uTime*.09),0.0)+filament(rotY(p,-uTime*.11),2.2);
-    vec3 paleRed=vec3(1.0,.24,.31);
-    vec3 rose=vec3(1.0,.47,.50);
-    vec3 gold=vec3(1.0,.69,.16);
-    vec3 whiteGold=vec3(1.0,.91,.58);
+    vec3 paleRed=uAccent;
+    vec3 rose=mix(uAccent,vec3(1.0),.28);
+    vec3 gold=uGold;
+    vec3 whiteGold=mix(uGold,vec3(1.0),.55);
     vec3 col=paleRed*shell*(.75+.85*turbulence);
     col+=rose*inner*.18;
     col+=gold*veins*.52;
@@ -101,7 +109,7 @@
 
     float active=max(uUser,uAI);
     float breathe=.025*sin(uTime*1.35)+.018*sin(uTime*.47+1.2);
-    float radius=.78+breathe+.035*active;
+    float radius=(.78+breathe+.035*active*uInteractionGain)*uOrbScale;
     float t0,t1; float hit=sphereHit(ro,rd,radius,t0,t1);
 
     vec3 col=vec3(0.0); float alpha=0.0;
@@ -122,27 +130,27 @@
       }
       vec3 ph=ro+rd*t0; vec3 n=normalize(ph);
       float fres=pow(1.0-max(0.0,dot(n,-rd)),2.5);
-      vec3 rim=mix(vec3(1.0,.26,.32),vec3(1.0,.71,.20),uAI*.7+uSignal*.3);
-      col += rim*fres*(.42+.9*active+.55*uSignal);
+      vec3 rim=mix(uAccent,uGold,uAI*.7+uSignal*.3);
+      col += rim*fres*(.42+.9*active*uInteractionGain+.55*uSignal)*uBloom;
       alpha=clamp(1.0-trans+fres*.34,.0,.94);
     }
 
     float d=length(uv);
     float halo=exp(-8.0*max(0.0,d-radius*.82))*smoothstep(1.25,.28,d);
-    col += vec3(1.0,.21,.28)*halo*.075;
-    col += vec3(1.0,.66,.16)*halo*(.08+.18*uAI+.10*uSignal);
+    col += uAccent*halo*.075*uBloom;
+    col += uGold*halo*(.08+.18*uAI+.10*uSignal)*uBloom;
 
     // Shock waves: user speech contracts inward; AI speech radiates outward.
     float wavePhase = uAI>uUser ? d*22.0-uTime*6.5 : d*22.0+uTime*5.0;
     float wave=pow(max(0.0,.5+.5*cos(wavePhase)),14.0)*exp(-3.5*abs(d-.88));
-    col += mix(vec3(1.,.23,.31),vec3(1.,.72,.22),step(uUser,uAI))*wave*active*.35;
+    col += mix(uAccent,uGold,step(uUser,uAI))*wave*active*uInteractionGain*.35*uBloom;
 
     // Procedural sparkle field. No particle buffers, allocations or textures.
     vec2 cell=floor((uv+vec2(uTime*.004,-uTime*.006))*55.0);
     float rnd=hash21(cell); vec2 local=fract((uv+vec2(uTime*.004,-uTime*.006))*55.0)-.5;
-    float sparkle=smoothstep(.055,0.0,length(local))*step(.982-0.006*uQuality,rnd);
+    float sparkle=smoothstep(.055,0.0,length(local))*step(.995-(.013+.004*uQuality)*clamp(uParticles,0.0,1.5),rnd);
     sparkle*=smoothstep(1.5,.45,d)*(1.0+.8*active);
-    col += mix(vec3(1.,.34,.38),vec3(1.,.82,.34),rnd)*sparkle*.75;
+    col += mix(uAccent,uGold,rnd)*sparkle*.75*uBloom;
     alpha=max(alpha,sparkle*.8+halo*.08);
 
     // Filmic shoulder without a post-process framebuffer/bloom chain.
@@ -163,7 +171,7 @@
   if(!gl.getProgramParameter(program,gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(program));
   gl.useProgram(program);
   const U={};
-  for(const n of ['uResolution','uTime','uUser','uAI','uState','uSignal','uQuality','uPointer']) U[n]=gl.getUniformLocation(program,n);
+  for(const n of ['uResolution','uTime','uUser','uAI','uState','uSignal','uQuality','uPointer','uAccent','uGold','uOrbScale','uBloom','uPlasma','uParticles','uInteractionGain']) U[n]=gl.getUniformLocation(program,n);
   const vao=gl.createVertexArray(); gl.bindVertexArray(vao);
 
   const states={dormant:0,idle:1,listening:2,transcribing:3,thinking:4,responding:5,speaking:6};
@@ -172,7 +180,7 @@
     balanced:{id:1,scale:.72,idle:24,active:60},
     spectacle:{id:2,scale:1.0,idle:30,active:60},
   };
-  const model={state:'idle',quality:'balanced',user:0,ai:0,signal:0,pointer:[.5,.5],dashboardOpen:false};
+  const model={state:'idle',quality:'balanced',user:0,ai:0,signal:0,pointer:[.5,.5],dashboardOpen:false,accent:[1,.24,.31],gold:[1,.69,.16],orbScale:1,bloom:.88,plasma:.82,particles:.78,interactionGain:1};
   let targetUser=0,targetAI=0,lastFrame=0,lastSignalAt=0,running=true;
 
   function resize(){
@@ -191,6 +199,7 @@
     if(topic==='presence.state'){ if(p.state) model.state=p.state; }
     if(topic==='presence.quality'){ setQuality(p.quality); }
     if(topic==='presence.context'){ model.dashboardOpen=!!p.dashboard_open; if(p.desktop_mode==='eco'&&window.__METATRON_FLOATING_ORB__) setQuality('eco'); }
+    if(topic==='presence.customization'||topic==='settings.presence'){ applyCustomization(p); }
     if(topic==='speech.user.started'){ model.state='listening'; }
     if(topic==='speech.user.level'||(topic==='presence.level'&&p.channel==='user')) targetUser=clamp01(p.level);
     if(topic==='speech.user.ended'){ targetUser=0; model.state='transcribing'; }
@@ -203,6 +212,16 @@
     stateLabel.textContent=`${model.state} · ${model.quality}`;
   }
   function setQuality(q){ if(!quality[q]) return; model.quality=q; resize(); stateLabel.textContent=`${model.state} · ${model.quality}`; }
+  function color3(hex,fallback){ const m=/^#?([0-9a-f]{6})$/i.exec(String(hex||'')); if(!m)return fallback; const n=parseInt(m[1],16); return [((n>>16)&255)/255,((n>>8)&255)/255,(n&255)/255]; }
+  function applyCustomization(p={}){
+    if(p.accent)model.accent=color3(p.accent,model.accent); if(p.gold)model.gold=color3(p.gold,model.gold);
+    if(p.orb_scale!=null)model.orbScale=Math.max(.5,Math.min(2,Number(p.orb_scale)||1));
+    if(p.bloom!=null)model.bloom=Math.max(0,Math.min(1.5,Number(p.bloom)||0));
+    if(p.plasma!=null)model.plasma=Math.max(0,Math.min(1.5,Number(p.plasma)||0));
+    if(p.particles!=null)model.particles=Math.max(0,Math.min(1.5,Number(p.particles)||0));
+    if(p.interaction_gain!=null)model.interactionGain=Math.max(.1,Math.min(3,Number(p.interaction_gain)||1));
+    if(p.quality)setQuality(p.quality);
+  }
   function clamp01(x){x=Number(x)||0;return Math.max(0,Math.min(1,x));}
 
   function frame(now){
@@ -224,6 +243,8 @@
     gl.uniform1f(U.uSignal,model.signal);
     gl.uniform1f(U.uQuality,q.id);
     gl.uniform2f(U.uPointer,model.pointer[0],model.pointer[1]);
+    gl.uniform3f(U.uAccent,...model.accent); gl.uniform3f(U.uGold,...model.gold);
+    gl.uniform1f(U.uOrbScale,model.orbScale); gl.uniform1f(U.uBloom,model.bloom); gl.uniform1f(U.uPlasma,model.plasma); gl.uniform1f(U.uParticles,model.particles); gl.uniform1f(U.uInteractionGain,model.interactionGain);
     gl.drawArrays(gl.TRIANGLES,0,3);
     requestAnimationFrame(frame);
   }
@@ -240,6 +261,7 @@
   window.metatronOrb={
     ingest,
     setQuality,
+    applyCustomization,
     snapshot:()=>({...model}),
     simulateUser:pulseUser,
     simulateAI:pulseAI,

@@ -7,7 +7,7 @@ python -W error -m unittest discover -s tests -v
 36 / 36 PASS
 python -m compileall -q metatron scripts tests
 PASS
-node --check renderer/orb/orb-renderer.js
+node --check ui/orb-renderer.js
 PASS (when Node is available)
 ```
 

@@ -100,6 +100,7 @@ class AppConfig:
     speech_hotkey: str = "right ctrl"
     speech_mode: str = "hold"
     speech_injection_method: str = "paste"
+    s1_command: str = ""
 
     # Presence/orb backend state. Rendering is intentionally a separate Tauri
     # concern; the backend emits a stable high-frequency live event contract.
@@ -116,7 +117,13 @@ class AppConfig:
     @classmethod
     def default(cls) -> "AppConfig":
         raw = os.environ.get("METATRON_DATA_DIR")
-        data_dir = Path(raw) if raw else Path.home() / ".metatron"
+        if raw:
+            data_dir = Path(raw)
+        elif os.name == "nt":
+            local = os.environ.get("LOCALAPPDATA")
+            data_dir = Path(local) / "Metatron" if local else Path.home() / "AppData" / "Local" / "Metatron"
+        else:
+            data_dir = Path(os.environ.get("XDG_DATA_HOME", Path.home() / ".local" / "share")) / "metatron"
         profile = os.environ.get("METATRON_MEMORY_PROFILE", "strict").strip().lower() or "strict"
         if profile not in MEMORY_PROFILES:
             profile = "strict"
@@ -154,6 +161,7 @@ class AppConfig:
             speech_hotkey=os.environ.get("METATRON_SPEECH_HOTKEY", "right ctrl"),
             speech_mode=os.environ.get("METATRON_SPEECH_MODE", "hold"),
             speech_injection_method=os.environ.get("METATRON_SPEECH_INJECTION", "paste"),
+            s1_command=os.environ.get("METATRON_S1_CMD", ""),
             presence_enabled=os.environ.get("METATRON_PRESENCE_ENABLED", "1").strip().lower() not in {"0", "false", "off", "no"},
             presence_quality=(os.environ.get("METATRON_PRESENCE_QUALITY", "balanced").strip().lower() or "balanced"),
         )

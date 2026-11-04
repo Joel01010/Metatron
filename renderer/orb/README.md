@@ -11,10 +11,12 @@ The renderer intentionally avoids Three.js, textures, video loops, model assets,
 From the repository root:
 
 ```bash
-python -m http.server 8765 --directory renderer/orb
+python -m http.server 8765 --directory .
 ```
 
-Open `http://127.0.0.1:8765/`.
+Open `http://127.0.0.1:8765/renderer/orb/`.
+
+The demo imports the canonical renderer from `ui/orb-renderer.js`; there is no second shader copy.
 
 - Click: simulate user speech (energy travels inward).
 - Shift+click: simulate AI speech (gold energy travels outward).

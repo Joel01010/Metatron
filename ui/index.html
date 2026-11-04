@@ -1,89 +1,28 @@
-<!doctype html>
-<html lang="en">
-<head>
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width,initial-scale=1" />
-<meta name="color-scheme" content="dark" />
-<title>Metatron</title>
-<link rel="stylesheet" href="styles.css" />
-</head>
-<body>
-<div id="app">
-  <aside class="sidebar">
-    <div class="brand"><span class="brand-orb"></span><div><strong>METATRON</strong><small>AI Operations Console</small></div></div>
-    <nav id="nav">
-      <button data-view="command" class="active">⌂ <span>Command</span></button>
-      <button data-view="tasks">▦ <span>Tasks</span></button>
-      <button data-view="agents">◉ <span>Agents</span></button>
-      <button data-view="hardware">◇ <span>Hardware</span></button>
-      <button data-view="voice">◌ <span>Voice</span></button>
-      <button data-view="metrics">▥ <span>Metrics</span></button>
-      <button data-view="settings">⚙ <span>Settings</span></button>
-    </nav>
-    <div class="side-footer"><div id="backendState" class="status-dot">● Backend</div><small id="version">v1.0</small></div>
-  </aside>
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="dark"><meta name="theme-color" content="#090708"><title>Metatron</title><link rel="stylesheet" href="styles.css"></head><body>
+<div class="ambient"></div><div id="app"><aside class="sidebar">
+<div class="brand"><span class="brand-orb"></span><div><strong>METATRON</strong><small>Local intelligence</small></div><em>LOCAL</em></div>
+<nav id="nav"><span>Core</span><button data-view="command" class="active">⌂ <b>Home</b></button><button data-view="dictation">◉ <b>Dictation</b></button><button data-view="history">≡ <b>History</b></button><button data-view="vocabulary">Aa <b>Dictionary</b></button><span>System</span><button data-view="hardware">◇ <b>Hardware</b></button><button data-view="models">⬡ <b>Models</b></button><button data-view="voice">◌ <b>Voice</b></button><button data-view="metrics">▥ <b>Metrics</b></button><span>Automation</span><button data-view="tasks">▦ <b>Tasks</b></button><button data-view="agents">◎ <b>Agents</b></button></nav>
+<div class="side-bottom"><button data-view="diagnostics">✦ <b>Diagnostics</b></button><button data-view="settings">⚙ <b>Settings</b></button><div class="side-status"><i id="backendDot"></i><small id="version">v—</small></div></div></aside>
+<main><header><div><h1 id="viewTitle">Home</h1><p id="viewSubtitle">Private, accelerated intelligence on your machine</p></div><div class="top-actions"><button id="paletteBtn" class="search-trigger">Search actions <kbd>Ctrl K</kbd></button><button id="speechQuick">Speech</button><button id="ttsToggle">Voice —</button><button id="refreshBtn">↻</button></div></header><div id="healthRail" class="health-rail"></div>
 
-  <main>
-    <header class="topbar">
-      <div><h1 id="viewTitle">Command Center</h1><p id="viewSubtitle">Local-first orchestration under a strict memory budget</p></div>
-      <div class="top-actions"><button id="refreshBtn" class="ghost">↻ Refresh</button><button id="ttsToggle" class="ghost">Voice: —</button></div>
-    </header>
+<section id="view-command" class="view active"><div class="hero-grid"><article class="panel orb-panel"><div class="floating-head"><div><small>PRESENCE</small><h2>Metatron</h2></div><span id="presenceState" class="pill">idle</span></div><iframe id="orbFrame" src="orb.html" title="Metatron presence"></iframe><div class="orb-foot"><span id="orbDevice">Placement pending</span><small>Your voice flows inward · Metatron speaks outward</small></div></article><div class="home-stack">
+<article class="panel listen-card"><small>DICTATION</small><h2 id="listenHeadline">Ready when you are</h2><p id="listenSubhead">Configure the local speech runtime to begin.</p><div class="row"><button id="startSpeechBtn" class="primary">Start listening</button><button id="stopSpeechBtn">Stop</button></div><div id="dictationFacts" class="facts"></div></article>
+<article class="panel"><div class="panel-head"><div><small>RESOURCE GOVERNOR</small><h2>Strict memory envelope</h2></div><span id="memoryBadge" class="pill gold">STRICT</span></div><div class="memory"><div id="memoryRing" class="memory-ring"><span id="memoryRingText">—</span></div><div><strong id="memoryPrimary">—</strong><small id="memoryLabel">Loading…</small><div class="bar"><i id="memoryFill"></i></div></div></div></article>
+<article class="panel"><div class="panel-head"><h2>Quick actions</h2><button class="link" data-go="diagnostics">System check</button></div><div class="quick"><button data-action="test-voice">◌ <b>Test voice</b><small>Local TTS</small></button><button data-action="scan-hardware">◇ <b>Scan hardware</b><small>NPU & GPU</small></button><button data-action="history">≡ <b>History</b><small>Review text</small></button><button data-action="dictionary">Aa <b>Dictionary</b><small>Teach terms</small></button></div></article></div></div>
+<div class="overview"><article class="panel"><div class="panel-head"><div><small>TODAY</small><h2>Local workflow</h2></div></div><div id="todayStats" class="today"></div></article><article class="panel"><div class="panel-head"><div><small>ACTIVITY</small><h2>System timeline</h2></div><span class="live">● live</span></div><div id="activityList" class="activity"></div></article><article class="panel"><div class="panel-head"><div><small>EXPERIMENTAL</small><h2>Agent runtimes</h2></div><button class="link" data-go="agents">Manage</button></div><div id="agentMiniList"></div></article></div></section>
 
-    <section id="view-command" class="view active">
-      <div class="command-grid">
-        <section class="panel orb-panel">
-          <div class="panel-head"><h2>Presence</h2><span id="presenceState" class="pill">idle</span></div>
-          <iframe id="orbFrame" src="orb.html" title="Metatron Orb"></iframe>
-        </section>
-        <section class="panel summary-panel">
-          <div class="panel-head"><h2>System</h2><span id="memoryBadge" class="pill gold">—</span></div>
-          <div class="metric-grid" id="systemMetrics"></div>
-          <div class="memory-bar"><i id="memoryFill"></i></div>
-          <small id="memoryLabel">Loading memory policy…</small>
-        </section>
-        <section class="panel agents-mini"><div class="panel-head"><h2>Agents</h2><button class="text-btn" data-go="agents">Manage</button></div><div id="agentMiniList"></div></section>
-        <section class="panel activity"><div class="panel-head"><h2>Activity</h2><span class="muted">live</span></div><div id="activityList" class="activity-list"></div></section>
-      </div>
-    </section>
-
-    <section id="view-tasks" class="view">
-      <div class="toolbar"><button id="newTaskBtn" class="primary">+ New task</button><span class="muted">Drag is intentionally omitted in v1; use Move for deterministic agent-safe state transitions.</span></div>
-      <div id="kanban" class="kanban"></div>
-    </section>
-
-    <section id="view-agents" class="view"><div id="agentGrid" class="cards"></div></section>
-
-    <section id="view-hardware" class="view">
-      <div class="two-col">
-        <section class="panel"><div class="panel-head"><h2>Accelerator policy</h2><div class="row" style="margin:0"><button id="winmlCatalog" class="ghost">Windows ML</button><button id="winmlEnsure" class="primary">Ensure EPs</button><button id="hardwareRefresh" class="ghost">Re-scan</button></div></div>
-          <p class="lead">Metatron tries <b>every routable NPU → every routable GPU → CPU</b>. Hardware detected without a usable execution provider is shown, but never selected. Runtime placement is recorded only after session creation succeeds.</p>
-          <div id="devicePolicy" class="policy-row"></div>
-          <div id="hardwareCounts" class="metric-grid"></div>
-        </section>
-        <section class="panel"><div class="panel-head"><h2>Active placement</h2></div><div id="actualDevices"></div></section>
-      </div>
-      <div id="deviceGrid" class="cards hardware-cards"></div>
-    </section>
-
-    <section id="view-voice" class="view">
-      <div class="two-col">
-        <section class="panel"><h2>Speech output</h2><div id="voiceControls" class="settings-stack"></div></section>
-        <section class="panel"><h2>Test voice</h2><textarea id="ttsText">Metatron is online. All systems are operating within the configured memory budget.</textarea><div class="row"><button id="speakBtn" class="primary">Speak</button><button id="stopSpeakBtn" class="ghost">Stop</button></div><div id="ttsProviders"></div></section>
-      </div>
-      <section class="panel"><div class="panel-head"><h2>Presence response</h2><span class="muted">backend event semantics</span></div><div class="state-strip"><span>Listening</span><b>inward energy</b><span>Thinking</span><b>condensed core</b><span>Speaking</span><b>outward gold waves</b></div></section>
-    </section>
-
-    <section id="view-metrics" class="view">
-      <div class="cards" id="metricCards"></div>
-      <section class="panel"><div class="panel-head"><h2>Managed memory</h2><span id="budgetState" class="pill">—</span></div><div id="memoryResources" class="resource-list"></div></section>
-    </section>
-
-    <section id="view-settings" class="view">
-      <div id="settingsGrid" class="settings-grid"></div>
-    </section>
-  </main>
-</div>
-<div id="toast"></div>
-<script src="app.js"></script>
-</body>
-</html>
+<section id="view-dictation" class="view"><div class="two"><article class="panel tall"><div class="panel-head"><div><small>LIVE INPUT</small><h2>Dictation engine</h2></div><span id="dictationStatePill" class="pill">offline</span></div><div class="dictation-hero"><div class="mic-orbit">◉</div><div><h3 id="dictationEngineTitle">Speech runtime</h3><p id="dictationEngineText">Configure the local runtime to begin.</p></div></div><div class="row"><button id="dictationStart" class="primary">Start engine</button><button id="dictationStop">Stop engine</button></div><div id="dictationDetails" class="detail-list"></div></article><div class="stack"><article class="panel"><div class="panel-head"><div><small>QUALITY</small><h2>Context & cleanup</h2></div></div><div id="contextSummary" class="feature-list"></div></article><article class="panel"><div class="panel-head"><div><small>PRIVACY</small><h2>Application rules</h2></div></div><div id="privacyRuleSummary" class="feature-list"></div></article></div></div></section>
+<section id="view-history" class="view"><div class="toolbar"><div class="search"><input id="historySearch" placeholder="Search local dictation history"></div><label><input id="historyPinned" type="checkbox"> Pinned</label><button id="clearHistoryBtn">Clear unpinned</button></div><div id="historyPrivacyBanner" class="banner"></div><article class="panel"><div id="historyList" class="list"></div></article></section>
+<section id="view-vocabulary" class="view"><div class="two"><article class="panel"><div class="panel-head"><div><small>PERSONAL DICTIONARY</small><h2>Teach Metatron your words</h2></div><span id="vocabCount" class="pill">0 terms</span></div><div class="form"><label>Term<input id="vocabTerm" placeholder="Supabase"></label><label>Preferred spelling<input id="vocabReplacement"></label><label>Notes<input id="vocabNotes"></label><button id="addVocabBtn" class="primary">Add term</button></div></article><article class="panel"><div class="panel-head"><div><small>APP AWARENESS</small><h2>Context & privacy rules</h2></div></div><div class="form"><label>Application ID<input id="ruleAppId" placeholder="Code.exe"></label><label>Label<input id="ruleLabel"></label><div class="form-row"><label>Context<select id="ruleContext"><option>general</option><option>email</option><option>work</option><option>personal</option><option>code</option><option>terminal</option><option>notes</option></select></label><label>Privacy<select id="rulePrivacy"><option value="allow">Allow</option><option value="no_context">No context</option><option value="pause">Pause dictation</option></select></label></div><button id="addRuleBtn">Save rule</button></div></article></div><div class="two"><article class="panel"><div class="panel-head"><h2>Dictionary entries</h2><input id="vocabSearch" class="mini-search" placeholder="Filter"></div><div id="vocabList" class="list"></div></article><article class="panel"><div class="panel-head"><h2>Application rules</h2><span class="muted">local policy</span></div><div id="appRulesList" class="list"></div></article></div></section>
+<section id="view-hardware" class="view"><div class="two"><article class="panel"><div class="panel-head"><div><small>ROUTING POLICY</small><h2>Accelerator selection</h2></div><div class="row"><button id="winmlCatalog">Windows ML</button><button id="winmlEnsure" class="primary">Prepare providers</button><button id="hardwareRefresh">↻</button></div></div><p class="lead">Every routable NPU → every routable GPU → CPU. Detected hardware without a usable provider is never claimed as active.</p><div id="devicePolicy" class="policy"></div><div id="hardwareCounts" class="metrics"></div></article><article class="panel"><div class="panel-head"><div><small>TRUTHFUL PLACEMENT</small><h2>Active workloads</h2></div></div><div id="actualDevices" class="list"></div></article></div><div id="deviceGrid" class="cards"></div></section>
+<section id="view-models" class="view"><div class="toolbar"><div><b>Local model center</b><span class="muted block">Runtime readiness, memory reservation and preferred placement</span></div><span id="modelBudgetHint" class="pill gold">Strict</span></div><div id="runtimeInventory" class="runtime-grid"></div><div id="modelGrid" class="model-grid"></div></section>
+<section id="view-voice" class="view"><div class="two"><article class="panel"><div class="panel-head"><div><small>SPEECH OUTPUT</small><h2>Voice personality</h2></div></div><div id="voiceControls" class="settings-list"></div></article><article class="panel"><div class="panel-head"><div><small>PREVIEW</small><h2>Test voice</h2></div></div><textarea id="ttsText">Metatron is online. All systems are operating within the configured memory budget.</textarea><div class="row"><button id="speakBtn" class="primary">Speak</button><button id="stopSpeakBtn">Stop</button></div><div id="ttsProviders"></div></article></div></section>
+<section id="view-metrics" class="view"><div id="metricCards" class="cards"></div><article class="panel"><div class="panel-head"><div><small>MEMORY GOVERNOR</small><h2>Managed resources</h2></div><span id="budgetState" class="pill">—</span></div><div id="memoryResources" class="list"></div></article></section>
+<section id="view-tasks" class="view"><div class="toolbar"><button id="newTaskBtn" class="primary">+ New task</button><span class="muted">Deterministic task state transitions.</span></div><div id="kanban" class="kanban"></div></section>
+<section id="view-agents" class="view"><div class="banner warn"><b>Experimental integrations.</b> Agent adapters are outside the certified dictation/orb/memory core.</div><div id="agentGrid" class="cards"></div></section>
+<section id="view-diagnostics" class="view"><article class="panel diagnostics-hero"><div><small>SYSTEM READINESS</small><h2 id="diagnosticsTitle">Checking Metatron…</h2><p id="diagnosticsSummary">Running non-destructive local checks.</p></div><div id="diagnosticScore" class="score">—</div></article><div id="diagnosticChecks" class="cards"></div><article class="panel certify"><div><small>FULL WINDOWS CERTIFICATION</small><h2>Qualify this PC end-to-end</h2><p class="lead">Preflight checks Windows/WebView2/build tooling. The validation harness then tests process ownership, accelerator routing, STT, TTS and diagnostics on the actual machine.</p></div><div class="row"><button id="copyBootstrapCmd">Copy bootstrap</button><button id="copyValidationCmd" class="primary">Copy validation</button></div></article></section>
+<section id="view-settings" class="view"><div id="settingsGrid" class="settings-grid"></div></section>
+</main></div><div id="toast"></div>
+<div id="commandPalette" class="overlay" hidden><div class="palette"><div class="palette-search"><input id="paletteInput" placeholder="Type an action…"><kbd>Esc</kbd></div><div id="paletteResults"></div></div></div>
+<div id="onboarding" class="overlay" hidden><div class="onboarding"><span class="brand-orb large"></span><small>WELCOME TO METATRON</small><h2>Local intelligence, under your control.</h2><p>Metatron keeps its control plane light, prefers your NPU, falls back to GPU, and saves dictated text only when you choose.</p><div class="onboarding-points"><div><b>1</b><span>Private by default<small>Transcript history starts off.</small></span></div><div><b>2</b><span>Truthful acceleration<small>NPU → GPU → CPU with verified placement.</small></span></div><div><b>3</b><span>Strict memory governor<small>Heavy models live in disposable workers.</small></span></div></div><div class="row center"><button id="onboardingDiagnostics">Check my system</button><button id="onboardingDone" class="primary">Enter Metatron</button></div></div></div>
+<script src="app.js"></script></body></html>

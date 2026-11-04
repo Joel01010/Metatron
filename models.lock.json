@@ -1,0 +1,27 @@
+{
+  "schema": "ai.metatron.models.v1",
+  "models": [
+    {
+      "role": "stt",
+      "id": "FluidInference/parakeet-unified-en-0.6b-ov",
+      "revision": "PIN_BEFORE_RELEASE",
+      "redistributed": false,
+      "license_review": "required; see docs/LICENSE_GATE.md"
+    },
+    {
+      "role": "cleanup",
+      "id": "superwhisper/s1-mini-GGUF",
+      "revision": "v1",
+      "redistributed": false,
+      "required_product_name": "S1-mini by Superwhisper",
+      "license_review": "required; see docs/LICENSE_GATE.md"
+    },
+    {
+      "role": "tts",
+      "id": "Kokoro-82M compatible ONNX runtime",
+      "revision": "PIN_EXACT_ASSET_BEFORE_RELEASE",
+      "redistributed": false,
+      "license_review": "required; see docs/LICENSE_GATE.md"
+    }
+  ]
+}

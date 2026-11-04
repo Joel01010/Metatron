@@ -194,3 +194,89 @@ def test_legacy_openvino_is_explicitly_pinned_by_class(monkeypatch, tmp_path):
         ('OpenVINOExecutionProvider', {'device_type':'GPU'}),
     ]
     assert actual['kind'] == 'GPU'
+
+
+def test_fault_injection_exhausts_npus_before_gpu(monkeypatch, tmp_path):
+    import sys, types
+    import metatron.hardware as hw
+    class T:
+        def __init__(self, name): self.name=name
+    class H:
+        def __init__(self, kind, name): self.type=T(kind); self.name=name
+    class D:
+        def __init__(self, kind, name, ep): self.hardware_device=H(kind,name); self.ep_name=ep
+    devices=[D('NPU','NPU-A','EP-A'),D('NPU','NPU-B','EP-B'),D('GPU','GPU-A','EP-G')]
+    attempts=[]
+    class SO:
+        def __init__(self): self.dev=None; self.cfg={}
+        def add_session_config_entry(self,k,v): self.cfg[k]=v
+        def add_provider_for_devices(self, ds, opts): self.dev=ds[0]
+    def session(path,sess_options=None,providers=None):
+        attempts.append(sess_options.dev.hardware_device.name); return object()
+    fake=types.SimpleNamespace(get_ep_devices=lambda:devices,SessionOptions=SO,InferenceSession=session,get_available_providers=lambda:[])
+    monkeypatch.setitem(sys.modules,'onnxruntime',fake)
+    monkeypatch.setattr(hw,'_openvino_devices',lambda:[]); monkeypatch.setattr(hw,'_onnxruntime_providers',lambda:[]); monkeypatch.setattr(hw,'_windows_accelerators',lambda:[])
+    mgr=HardwareManager(DummyDB(),None,fault_injector=lambda d,w: d['kind']=='NPU')
+    _, actual=hw.WindowsMLSessionFactory(mgr).create_session(str(tmp_path/'m.onnx'),'verify')
+    assert attempts == ['GPU-A']  # rejected NPUs never reach session construction
+    assert actual['kind']=='GPU'
+
+
+def test_session_created_is_not_recorded_as_actual_without_warmup(monkeypatch, tmp_path):
+    import sys, types
+    import metatron.hardware as hw
+    class T:
+        def __init__(self,name): self.name=name
+    class H:
+        def __init__(self): self.type=T('GPU'); self.name='GPU-A'
+    class D:
+        hardware_device=H(); ep_name='DmlExecutionProvider'
+    class SO:
+        def add_session_config_entry(self,k,v): pass
+        def add_provider_for_devices(self,ds,opts): pass
+    fake=types.SimpleNamespace(get_ep_devices=lambda:[D()],SessionOptions=SO,InferenceSession=lambda *a,**k:object(),get_available_providers=lambda:[])
+    monkeypatch.setitem(sys.modules,'onnxruntime',fake)
+    monkeypatch.setattr(hw,'_openvino_devices',lambda:[]); monkeypatch.setattr(hw,'_onnxruntime_providers',lambda:[]); monkeypatch.setattr(hw,'_windows_accelerators',lambda:[])
+    mgr=HardwareManager(DummyDB(),None)
+    _, rec=hw.WindowsMLSessionFactory(mgr).create_session(str(tmp_path/'m.onnx'),'verify')
+    assert rec['verified'] is False
+    assert 'verify' not in mgr.status()['actual']
+
+
+def test_warmup_records_actual_and_disables_cpu_fallback(monkeypatch, tmp_path):
+    import sys, types
+    import metatron.hardware as hw
+    seen={}
+    class T:
+        def __init__(self,name): self.name=name
+    class H:
+        def __init__(self): self.type=T('NPU'); self.name='NPU-A'
+    class D:
+        hardware_device=H(); ep_name='FutureNpuEP'
+    class SO:
+        def __init__(self): self.cfg={}; self.dev=None
+        def add_session_config_entry(self,k,v): self.cfg[k]=v
+        def add_provider_for_devices(self,ds,opts): self.dev=ds[0]
+    def make(path,sess_options=None,**kw): seen.update(sess_options.cfg); return object()
+    fake=types.SimpleNamespace(get_ep_devices=lambda:[D()],SessionOptions=SO,InferenceSession=make,get_available_providers=lambda:[])
+    monkeypatch.setitem(sys.modules,'onnxruntime',fake)
+    monkeypatch.setattr(hw,'_openvino_devices',lambda:[]); monkeypatch.setattr(hw,'_onnxruntime_providers',lambda:[]); monkeypatch.setattr(hw,'_windows_accelerators',lambda:[])
+    mgr=HardwareManager(DummyDB(),None)
+    _, rec=hw.WindowsMLSessionFactory(mgr).create_session(str(tmp_path/'m.onnx'),'verify',warmup=lambda s:None,require_verified=True)
+    assert seen['session.disable_cpu_ep_fallback']=='1'
+    assert rec['verified'] is True and mgr.status()['actual']['verify']['kind']=='NPU'
+
+
+def test_configured_windows_ml_devices_are_merged_as_routable(monkeypatch, tmp_path):
+    import metatron.hardware as hw
+    fake_py=tmp_path/'python.exe'; fake_py.write_text('x')
+    monkeypatch.setattr(hw,'_openvino_devices',lambda:[]); monkeypatch.setattr(hw,'_onnxruntime_providers',lambda:[]); monkeypatch.setattr(hw,'_windows_accelerators',lambda:[])
+    def worker(self, command, names=None, timeout=180.0):
+        assert command=='devices'
+        return {'configured':True,'registration_scope':'current_process','devices':[{'kind':'NPU','ep_name':'QNNExecutionProvider','name':'Snapdragon NPU','vendor':'Qualcomm','device_id':'n0'},{'kind':'GPU','ep_name':'DmlExecutionProvider','name':'GPU','vendor':'Test','device_id':'g0'}]}
+    monkeypatch.setattr(HardwareManager,'_winml_worker',worker)
+    mgr=HardwareManager(DummyDB(),None,winml_python=str(fake_py))
+    candidates=mgr.candidates('stt')
+    assert [x['kind'] for x in candidates[:3]]==['NPU','GPU','CPU']
+    assert candidates[0]['provider']=='QNNExecutionProvider'
+    assert candidates[0]['routable'] is True

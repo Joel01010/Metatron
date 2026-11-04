@@ -1,11 +1,12 @@
 param(
-    [string]$Root = "Z:\Metatron",
+    [string]$Root = "",
     [string]$Python = "python",
     [ValidateSet("fp16", "int8", "fp32")]
     [string]$Precision = "fp16"
 )
 
 $ErrorActionPreference = "Stop"
+if (-not $Root) { $Root = Join-Path $env:LOCALAPPDATA "Metatron" }
 $Venv = Join-Path $Root "venvs\kokoro-tts"
 $Models = Join-Path $Root "models\kokoro"
 New-Item -ItemType Directory -Force -Path $Venv, $Models | Out-Null

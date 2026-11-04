@@ -1,8 +1,13 @@
 param(
-  [string]$Root = "Z:\Metatron\runtimes\winml",
+  [string]$Root = "",
   [string]$Python = "python"
 )
 $ErrorActionPreference = 'Stop'
+if (-not $Root) {
+  $base = if ($env:LOCALAPPDATA) { $env:LOCALAPPDATA } else { Join-Path $HOME 'AppData\Local' }
+  $Root = Join-Path $base 'Metatron\runtimes\winml'
+}
+$Root = [IO.Path]::GetFullPath($Root)
 New-Item -ItemType Directory -Force -Path $Root | Out-Null
 $Venv = Join-Path $Root '.venv'
 if (-not (Test-Path (Join-Path $Venv 'Scripts\python.exe'))) {

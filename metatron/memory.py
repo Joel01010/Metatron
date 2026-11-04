@@ -18,14 +18,26 @@ class Reservation:
     idle_unload_s: float | None = None
     exclusive_group: str | None = None
     measured_mib: float | None = None
+    placement: str | None = None
+    placement_estimates_mib: dict[str, int] = field(default_factory=dict)
     metadata: dict = field(default_factory=dict)
 
     @property
-    def charge_mib(self) -> int:
-        if self.measured_mib is None:
+    def baseline_estimate_mib(self) -> int:
+        if not self.placement_estimates_mib:
             return int(self.estimated_mib)
-        # Keep a 10% safety cushion on measured working set.
-        return max(1, int(max(self.estimated_mib * 0.75, self.measured_mib * 1.10)))
+        if self.placement:
+            return int(self.placement_estimates_mib.get(self.placement.upper(), self.estimated_mib))
+        # Before placement is known, admit against the worst candidate.
+        return max([int(self.estimated_mib), *[int(v) for v in self.placement_estimates_mib.values()]])
+
+    @property
+    def charge_mib(self) -> int:
+        baseline = self.baseline_estimate_mib
+        if self.measured_mib is None:
+            return baseline
+        # Keep a 10% safety cushion on measured private working set.
+        return max(1, int(max(baseline * 0.75, self.measured_mib * 1.10)))
 
 
 class MemoryBudgetError(RuntimeError):
@@ -69,6 +81,19 @@ class ModelBroker:
             if name not in self._items:
                 raise KeyError(name)
             self._items[name].estimated_mib = value
+
+    def set_placement(self, name: str, placement: str | None) -> None:
+        with self._lock:
+            if name not in self._items:
+                raise KeyError(name)
+            self._items[name].placement = None if placement is None else str(placement).upper()
+
+    def set_placement_estimates(self, name: str, estimates_mib: dict[str, int]) -> None:
+        clean = {str(k).upper(): int(v) for k, v in estimates_mib.items() if int(v) > 0}
+        with self._lock:
+            if name not in self._items:
+                raise KeyError(name)
+            self._items[name].placement_estimates_mib = clean
 
     def set_measured_mib(self, name: str, measured_mib: float | None) -> None:
         with self._lock:
@@ -201,6 +226,9 @@ class ModelBroker:
                     "idle_unload_s": x.idle_unload_s,
                     "exclusive_group": x.exclusive_group,
                     "measured_mib": x.measured_mib,
+                    "placement": x.placement,
+                    "placement_estimates_mib": dict(x.placement_estimates_mib),
+                    "baseline_estimate_mib": x.baseline_estimate_mib,
                     "metadata": dict(x.metadata),
                     "unload_hook": bool(x.unload),
                     "charge_mib": x.charge_mib,
