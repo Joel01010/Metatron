@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<meta name="color-scheme" content="dark" />
+<title>Metatron</title>
+<link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+<div id="app">
+  <aside class="sidebar">
+    <div class="brand"><span class="brand-orb"></span><div><strong>METATRON</strong><small>AI Operations Console</small></div></div>
+    <nav id="nav">
+      <button data-view="command" class="active">⌂ <span>Command</span></button>
+      <button data-view="tasks">▦ <span>Tasks</span></button>
+      <button data-view="agents">◉ <span>Agents</span></button>
+      <button data-view="hardware">◇ <span>Hardware</span></button>
+      <button data-view="voice">◌ <span>Voice</span></button>
+      <button data-view="metrics">▥ <span>Metrics</span></button>
+      <button data-view="settings">⚙ <span>Settings</span></button>
+    </nav>
+    <div class="side-footer"><div id="backendState" class="status-dot">● Backend</div><small id="version">v1.0</small></div>
+  </aside>
+
+  <main>
+    <header class="topbar">
+      <div><h1 id="viewTitle">Command Center</h1><p id="viewSubtitle">Local-first orchestration under a strict memory budget</p></div>
+      <div class="top-actions"><button id="refreshBtn" class="ghost">↻ Refresh</button><button id="ttsToggle" class="ghost">Voice: —</button></div>
+    </header>
+
+    <section id="view-command" class="view active">
+      <div class="command-grid">
+        <section class="panel orb-panel">
+          <div class="panel-head"><h2>Presence</h2><span id="presenceState" class="pill">idle</span></div>
+          <iframe id="orbFrame" src="orb.html" title="Metatron Orb"></iframe>
+        </section>
+        <section class="panel summary-panel">
+          <div class="panel-head"><h2>System</h2><span id="memoryBadge" class="pill gold">—</span></div>
+          <div class="metric-grid" id="systemMetrics"></div>
+          <div class="memory-bar"><i id="memoryFill"></i></div>
+          <small id="memoryLabel">Loading memory policy…</small>
+        </section>
+        <section class="panel agents-mini"><div class="panel-head"><h2>Agents</h2><button class="text-btn" data-go="agents">Manage</button></div><div id="agentMiniList"></div></section>
+        <section class="panel activity"><div class="panel-head"><h2>Activity</h2><span class="muted">live</span></div><div id="activityList" class="activity-list"></div></section>
+      </div>
+    </section>
+
+    <section id="view-tasks" class="view">
+      <div class="toolbar"><button id="newTaskBtn" class="primary">+ New task</button><span class="muted">Drag is intentionally omitted in v1; use Move for deterministic agent-safe state transitions.</span></div>
+      <div id="kanban" class="kanban"></div>
+    </section>
+
+    <section id="view-agents" class="view"><div id="agentGrid" class="cards"></div></section>
+
+    <section id="view-hardware" class="view">
+      <div class="two-col">
+        <section class="panel"><div class="panel-head"><h2>Accelerator policy</h2><div class="row" style="margin:0"><button id="winmlCatalog" class="ghost">Windows ML</button><button id="winmlEnsure" class="primary">Ensure EPs</button><button id="hardwareRefresh" class="ghost">Re-scan</button></div></div>
+          <p class="lead">Metatron tries <b>every routable NPU → every routable GPU → CPU</b>. Hardware detected without a usable execution provider is shown, but never selected. Runtime placement is recorded only after session creation succeeds.</p>
+          <div id="devicePolicy" class="policy-row"></div>
+          <div id="hardwareCounts" class="metric-grid"></div>
+        </section>
+        <section class="panel"><div class="panel-head"><h2>Active placement</h2></div><div id="actualDevices"></div></section>
+      </div>
+      <div id="deviceGrid" class="cards hardware-cards"></div>
+    </section>
+
+    <section id="view-voice" class="view">
+      <div class="two-col">
+        <section class="panel"><h2>Speech output</h2><div id="voiceControls" class="settings-stack"></div></section>
+        <section class="panel"><h2>Test voice</h2><textarea id="ttsText">Metatron is online. All systems are operating within the configured memory budget.</textarea><div class="row"><button id="speakBtn" class="primary">Speak</button><button id="stopSpeakBtn" class="ghost">Stop</button></div><div id="ttsProviders"></div></section>
+      </div>
+      <section class="panel"><div class="panel-head"><h2>Presence response</h2><span class="muted">backend event semantics</span></div><div class="state-strip"><span>Listening</span><b>inward energy</b><span>Thinking</span><b>condensed core</b><span>Speaking</span><b>outward gold waves</b></div></section>
+    </section>
+
+    <section id="view-metrics" class="view">
+      <div class="cards" id="metricCards"></div>
+      <section class="panel"><div class="panel-head"><h2>Managed memory</h2><span id="budgetState" class="pill">—</span></div><div id="memoryResources" class="resource-list"></div></section>
+    </section>
+
+    <section id="view-settings" class="view">
+      <div id="settingsGrid" class="settings-grid"></div>
+    </section>
+  </main>
+</div>
+<div id="toast"></div>
+<script src="app.js"></script>
+</body>
+</html>

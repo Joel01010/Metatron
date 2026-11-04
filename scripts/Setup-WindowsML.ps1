@@ -1,0 +1,16 @@
+param(
+  [string]$Root = "Z:\Metatron\runtimes\winml",
+  [string]$Python = "python"
+)
+$ErrorActionPreference = 'Stop'
+New-Item -ItemType Directory -Force -Path $Root | Out-Null
+$Venv = Join-Path $Root '.venv'
+if (-not (Test-Path (Join-Path $Venv 'Scripts\python.exe'))) {
+  & $Python -m venv $Venv
+}
+$Py = Join-Path $Venv 'Scripts\python.exe'
+& $Py -m pip install --upgrade pip
+& $Py -m pip install "wasdk-Microsoft.Windows.AI.MachineLearning[all]" wasdk-Microsoft.Windows.ApplicationModel.DynamicDependency.Bootstrap onnxruntime-windowsml
+[Environment]::SetEnvironmentVariable('METATRON_WINML_PYTHON', $Py, 'User')
+Write-Host "Windows ML runtime ready: $Py"
+Write-Host "Restart Metatron, then open Hardware and press Re-scan / Ensure Windows ML EPs."
