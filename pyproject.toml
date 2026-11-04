@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "metatron-ai-console"
-version = "1.1.0"
+version = "1.1.1"
 description = "Open-source, memory-first Windows AI operations console with NPU-first acceleration"
 readme = "README.md"
 requires-python = ">=3.11"

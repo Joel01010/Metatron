@@ -3,6 +3,7 @@ import unittest
 from pathlib import Path
 from metatron.config import AppConfig
 from metatron.core import Metatron
+from metatron import __version__
 
 
 class CoreTests(unittest.TestCase):
@@ -10,6 +11,7 @@ class CoreTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as td:
             app = Metatron(AppConfig(data_dir=Path(td)))
             status = app.status()
+            self.assertEqual(status["version"], __version__)
             self.assertEqual(status["memory"]["hard_limit_mib"], 2816)
             ids = {a["id"] for a in status["agents"]}
             self.assertTrue({"eop", "ezra", "codex", "claude-code", "opencode"}.issubset(ids))

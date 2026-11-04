@@ -1,1 +1,3 @@
-__version__ = "1.0.0"
+"""Metatron local-first AI operations console."""
+
+__version__ = "1.1.1"

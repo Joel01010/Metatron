@@ -6,6 +6,7 @@ from typing import Any
 
 from .approvals import ApprovalStore
 from .config import AppConfig, MEMORY_PROFILES
+from . import __version__
 from .db import Database
 from .events import EventBus
 from .presence import PresenceController
@@ -499,7 +500,7 @@ class Metatron:
     def status(self) -> dict:
         telemetry = self.telemetry.sample_core(persist=False)
         return {
-            "version": "1.0.0",
+            "version": __version__,
             "memory_profile": self.config.memory_profile,
             "memory": self.memory.status(),
             "telemetry": telemetry,
