@@ -51,3 +51,15 @@
 - Windows Job Object ownership, DPAPI secret store, environment allowlisting and one-dir packaging.
 - Placement-aware memory reservations, accelerator timeouts/cache hooks, cross-vendor inventory merge.
 - Procedural reactive orb and isolated TTS / semantic-cleanup workers.
+
+
+## v1.4.0 re-verification corrections
+
+- fixed checkout-local pytest basetemp and failed-only retention;
+- fixed PowerShell desktop-measurement parsing and v1.4 argument forwarding;
+- hardened SAPI interruption test and production playback to use asynchronous cancellation;
+- made requested memory soak independent of unrelated gate failures;
+- made external speech-sidecar absence SKIP unless explicitly required;
+- rejected partial process-tree memory totals and preferred private commit for learned worker charges;
+- expanded Windows diagnostics with handles, threads, process churn, sampling overhead and commit pressure;
+- added memory-hardening and re-verification notes.

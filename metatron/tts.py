@@ -24,7 +24,7 @@ from .events import Event, EventBus
 from .db import Database
 from .memory import MemoryBudgetError, ModelBroker
 from .presence import PresenceController
-from .telemetry import Telemetry, process_tree_rss_mib
+from .telemetry import Telemetry, process_tree_charge_mib
 from .workers import JsonlWorkerSupervisor, WorkerError
 
 
@@ -468,30 +468,46 @@ class TTSManager:
         })
         start = time.monotonic()
         levels = list(result.envelope.get("levels") or [])
-        audio_thread: threading.Thread | None = None
+        winsound_module = None
+        audio_started = False
         if self.settings.playback and os.name == "nt":
-            def play_windows() -> None:
+            try:
+                import winsound
+                # PlaySound's supported interruptible pattern is asynchronous
+                # playback followed by PlaySound(None, 0). A synchronous call in
+                # another thread can wait until the clip ends before the stop is
+                # observed on some Windows audio stacks.
+                winsound.PlaySound(
+                    result.path,
+                    winsound.SND_FILENAME | winsound.SND_ASYNC | winsound.SND_NODEFAULT,
+                )
+                winsound_module = winsound
+                audio_started = True
+            except Exception as exc:
+                self._last_error = f"playback: {exc}"
+        try:
+            for point in levels:
+                if self._play_stop.is_set():
+                    break
+                target = float(point["t_ms"]) / 1000.0
+                delay = target - (time.monotonic() - start)
+                if delay > 0:
+                    self._play_stop.wait(delay)
+                if self._play_stop.is_set():
+                    break
+                self.presence.tts_level(float(point["level"]), float(point["t_ms"]))
+            # Keep the state machine alive through the advertised audio duration,
+            # even if the 30 Hz envelope's final point lands slightly early.
+            if audio_started and not self._play_stop.is_set():
+                remaining = result.duration_ms / 1000.0 - (time.monotonic() - start)
+                if remaining > 0:
+                    self._play_stop.wait(remaining)
+        finally:
+            if audio_started and winsound_module is not None:
                 try:
-                    import winsound
-                    winsound.PlaySound(result.path, winsound.SND_FILENAME)
-                except Exception as exc:
-                    self._last_error = f"playback: {exc}"
-            audio_thread = threading.Thread(target=play_windows, name="metatron-tts-play", daemon=True)
-            audio_thread.start()
-        for point in levels:
-            if self._play_stop.is_set():
-                break
-            target = float(point["t_ms"]) / 1000.0
-            delay = target - (time.monotonic() - start)
-            if delay > 0:
-                self._play_stop.wait(delay)
-            if self._play_stop.is_set():
-                break
-            self.presence.tts_level(float(point["level"]), float(point["t_ms"]))
-        # On non-Windows or playback-disabled runs, do not add real-time sleeps
-        # after the last envelope point. Windows playback thread is authoritative.
-        if audio_thread is not None:
-            audio_thread.join(timeout=max(1.0, result.duration_ms / 1000.0 + 2.0))
+                    winsound_module.PlaySound(None, 0)
+                except Exception:
+                    pass
         stopped = self._play_stop.is_set()
         self.presence.tts_finished(stopped=stopped)
         if self.audio_focus is not None:
@@ -529,11 +545,14 @@ class TTSManager:
         for provider in self.providers:
             pid = getattr(provider, "pid", None)
             if pid:
-                rss = process_tree_rss_mib(int(pid))
-                if rss is not None:
+                measured, measure_kind = process_tree_charge_mib(int(pid))
+                if measured is not None:
                     try:
-                        self.broker.set_measured_mib(provider.resource_name, rss)
-                        self.telemetry.record("tts", "rss", rss, "MiB", {"provider": provider.id})
+                        self.broker.set_measured_mib(provider.resource_name, measured)
+                        self.broker.set_metadata(provider.resource_name, measurement_kind=measure_kind)
+                        self.telemetry.record(
+                            "tts", measure_kind, measured, "MiB", {"provider": provider.id}
+                        )
                     except KeyError:
                         pass
         evicted = self.broker.reconcile()

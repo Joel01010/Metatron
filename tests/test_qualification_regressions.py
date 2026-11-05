@@ -59,3 +59,60 @@ def test_opencode_status_probe_is_cached(monkeypatch):
     monkeypatch.setattr(OpenCodeAdapter,'server_available',lambda self:fake())
     a.status();a.status()
     assert len(calls)==1
+
+
+def test_windows_reverification_regressions_are_locked_down():
+    pyproject=(ROOT/'pyproject.toml').read_text(encoding='utf-8')
+    assert '--basetemp=.pytest-tmp' in pyproject
+    assert 'tmp_path_retention_policy = "failed"' in pyproject
+
+    desktop=(ROOT/'scripts/Measure-MetatronDesktop.ps1').read_text(encoding='utf-8')
+    assert desktop.count('{') == desktop.count('}')
+
+    wrapper=(ROOT/'scripts/Invoke-MetatronV14Qualification.ps1').read_text(encoding='utf-8')
+    assert '$fwd=@(' in wrapper
+    assert '@fwd' in wrapper
+    assert '$args=@(' not in wrapper
+    assert 'Test-Path $qroot' in wrapper
+    assert '$qroot -and' in wrapper
+
+    full=(ROOT/'scripts/Invoke-MetatronFullValidation.ps1').read_text(encoding='utf-8')
+    assert 'if($SoakMinutes -gt 0)' in full
+    assert 'if($SoakMinutes -gt 0 -and $overall)' not in full
+    assert 'RequireSpeechRuntime' in full
+
+
+def test_tts_interrupt_contract_uses_async_windows_playback():
+    test_script=(ROOT/'scripts/Test-WindowsTTSInterrupt.py').read_text(encoding='utf-8')
+    tts=(ROOT/'metatron/tts.py').read_text(encoding='utf-8')
+    assert 'SND_ASYNC' in test_script
+    assert 'MAX_STOP_LATENCY_MS = 2000.0' in test_script
+    assert 'interrupted_before_natural_end' in test_script
+    assert 'SND_ASYNC' in tts
+    assert 'PlaySound(None, 0)' in tts
+
+
+def test_memory_collector_records_leak_diagnostics():
+    collector=(ROOT/'scripts/Collect-WindowsMetrics.ps1').read_text(encoding='utf-8')
+    for token in ('handle_count','thread_count','process_details','process_added_pids',
+                  'process_removed_pids','sample_elapsed_ms','interval_overrun_ms',
+                  'system_commit_percent','GpuPollIntervalSeconds'):
+        assert token in collector
+    soak=(ROOT/'scripts/Analyze-Soak.py').read_text(encoding='utf-8')
+    assert 'max-quartile-delta-mib' in soak
+    assert 'min-complete-ratio' in soak
+    assert 'handle_count_quartile_delta' in soak
+    assert 'private_bytes_slope_mib_per_hour' in soak
+    assert 'private_bytes_complete_ratio' in soak
+
+
+def test_product_audit_accepts_rustfmt_allowlist():
+    audit = (ROOT / "scripts" / "product_audit.py").read_text(encoding="utf-8")
+    rust = (ROOT / "src-tauri" / "src" / "main.rs").read_text(encoding="utf-8")
+    assert "matches!(\n        cmd," in rust
+    assert r"main_allowed\s*" in audit
+    proc = subprocess.run(
+        [sys.executable, str(ROOT / "scripts" / "product_audit.py")],
+        cwd=ROOT, capture_output=True, text=True, check=False,
+    )
+    assert proc.returncode == 0, proc.stdout + proc.stderr

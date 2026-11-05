@@ -25,4 +25,7 @@ include = ["metatron*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "-q"
+# Keep pytest scratch data inside the checkout instead of a possibly stale/locked %TEMP%.
+# This remains portable: on the reference Z: checkout it naturally resolves to Z:\...\.pytest-tmp.
+addopts = "-q --basetemp=.pytest-tmp"
+tmp_path_retention_policy = "failed"

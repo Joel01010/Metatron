@@ -101,6 +101,12 @@ class ModelBroker:
                 raise KeyError(name)
             self._items[name].measured_mib = None if measured_mib is None else max(0.0, float(measured_mib))
 
+    def set_metadata(self, name: str, **values) -> None:
+        with self._lock:
+            if name not in self._items:
+                raise KeyError(name)
+            self._items[name].metadata.update(values)
+
     def set_unload_callback(self, name: str, callback: Callable[[], None] | None) -> None:
         """Bind the real resource teardown used by eviction/idle sweeps."""
         with self._lock:

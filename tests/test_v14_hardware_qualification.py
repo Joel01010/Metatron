@@ -17,7 +17,7 @@ def test_v14_qualification_scripts_present():
 
 def test_soak_analyzer_passes_flat_and_fails_growth(tmp_path):
  def run(vals,gate):
-  start=1000000; p=tmp_path/'m.json';o=tmp_path/'o.json';p.write_text(json.dumps({'samples':[{'ts':start+i*900000,'private_working_set_mib':v} for i,v in enumerate(vals)]}))
+  start=1000000; p=tmp_path/'m.json';o=tmp_path/'o.json';p.write_text(json.dumps({'samples':[{'ts':start+i*900000,'private_working_set_mib':v,'private_bytes_mib':v+40} for i,v in enumerate(vals)]}))
   cp=subprocess.run([sys.executable,str(ROOT/'scripts/Analyze-Soak.py'),str(p),'--max-growth-mib-per-hour',str(gate),'--json-out',str(o)],capture_output=True,text=True)
   return cp.returncode,json.loads(o.read_text())
  rc,out=run([300,301,300,302,301,302],64);assert rc==0 and out['status']=='PASS'
@@ -35,3 +35,16 @@ def test_windows_ci_builds_full_package():
  assert 'Full Windows package build' in s
  assert 'Verify-WindowsArtifacts.ps1' in s
  assert 'Test-PowerShellScripts.ps1' in s
+
+
+def test_soak_analyzer_rejects_incomplete_capture(tmp_path):
+ start=1000000
+ samples=[]
+ for i in range(10):
+  samples.append({'ts':start+i*1000,'private_working_set_mib':300 if i<5 else None,'private_bytes_mib':340 if i<5 else None})
+ p=tmp_path/'m-incomplete.json';o=tmp_path/'o-incomplete.json'
+ p.write_text(json.dumps({'duration_seconds':10,'samples':samples}))
+ cp=subprocess.run([sys.executable,str(ROOT/'scripts/Analyze-Soak.py'),str(p),'--json-out',str(o)],capture_output=True,text=True)
+ out=json.loads(o.read_text())
+ assert cp.returncode==2 and out['status']=='FAIL'
+ assert any('incomplete' in x for x in out['failures'])

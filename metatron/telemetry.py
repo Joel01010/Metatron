@@ -106,14 +106,23 @@ def process_private_commit_mib(pid: int | None = None) -> float | None:
 
 
 def process_tree_private_commit_mib(root_pid: int) -> float | None:
+    """Sum Windows private commit for a process tree only when coverage is complete.
+
+    Partial sums are unsafe for admission control because an inaccessible child can
+    make a heavyweight runtime look artificially cheap. Ephemeral child churn may
+    therefore yield ``None`` for one sample; callers should keep their conservative
+    reservation estimate until a complete measurement is available.
+    """
+    pids = process_tree_pids(root_pid)
+    if not pids:
+        return None
     total = 0.0
-    found = False
-    for pid in process_tree_pids(root_pid):
+    for pid in pids:
         value = process_private_commit_mib(pid)
-        if value is not None:
-            total += value
-            found = True
-    return total if found else None
+        if value is None:
+            return None
+        total += value
+    return total
 
 def _process_parent_map() -> dict[int, list[int]]:
     """Return parent -> child PID map using native OS primitives only."""
@@ -199,15 +208,31 @@ def process_tree_pids(root_pid: int, max_processes: int = 512) -> list[int]:
 
 
 def process_tree_rss_mib(root_pid: int) -> float | None:
-    """Sum current RSS for an agent process and all of its descendants."""
+    """Sum current RSS for a process tree only when coverage is complete."""
+    pids = process_tree_pids(root_pid)
+    if not pids:
+        return None
     total = 0.0
-    found = False
-    for pid in process_tree_pids(root_pid):
+    for pid in pids:
         rss = process_rss_mib(pid)
-        if rss is not None:
-            total += rss
-            found = True
-    return total if found else None
+        if rss is None:
+            return None
+        total += rss
+    return total
+
+
+def process_tree_charge_mib(root_pid: int) -> tuple[float | None, str]:
+    """Return the safest currently available process-tree charge metric.
+
+    Windows private commit is preferred because it captures committed private
+    virtual memory even when pages are not resident. On other platforms, or if
+    private commit cannot be measured completely, fall back to complete-tree RSS.
+    """
+    private_commit = process_tree_private_commit_mib(root_pid)
+    if private_commit is not None:
+        return private_commit, "private_commit"
+    rss = process_tree_rss_mib(root_pid)
+    return rss, "working_set" if rss is not None else "unavailable"
 
 
 def system_memory() -> dict[str, float | None]:

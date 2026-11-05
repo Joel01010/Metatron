@@ -15,7 +15,6 @@ use std::{
 };
 use tauri::{Emitter, LogicalSize, Manager, PhysicalPosition, State, WebviewWindow};
 
-
 #[cfg(windows)]
 struct BackendJob {
     handle: usize,
@@ -65,7 +64,9 @@ impl Drop for BackendJob {
     fn drop(&mut self) {
         unsafe {
             if self.handle != 0 {
-                let _ = windows_sys::Win32::Foundation::CloseHandle(self.handle as windows_sys::Win32::Foundation::HANDLE);
+                let _ = windows_sys::Win32::Foundation::CloseHandle(
+                    self.handle as windows_sys::Win32::Foundation::HANDLE,
+                );
             }
         }
     }
@@ -80,7 +81,13 @@ struct BackendProcess {
 }
 
 impl BackendProcess {
-    fn request(&self, id: u64, cmd: &str, params: Value, timeout: Duration) -> Result<Value, String> {
+    fn request(
+        &self,
+        id: u64,
+        cmd: &str,
+        params: Value,
+        timeout: Duration,
+    ) -> Result<Value, String> {
         let (tx, rx) = mpsc::channel();
         self.pending
             .lock()
@@ -170,7 +177,10 @@ fn spawn_backend(app: &tauri::AppHandle) -> Result<BackendProcess, String> {
         Command::new(exe)
     };
 
-    command.stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped());
+    command
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
     #[cfg(windows)]
     {
         use std::os::windows::process::CommandExt;
@@ -193,7 +203,8 @@ fn spawn_backend(app: &tauri::AppHandle) -> Result<BackendProcess, String> {
     let stdin = child.stdin.take().ok_or("backend stdin unavailable")?;
     let stdout = child.stdout.take().ok_or("backend stdout unavailable")?;
     let stderr = child.stderr.take().ok_or("backend stderr unavailable")?;
-    let pending: Arc<Mutex<HashMap<u64, mpsc::Sender<Value>>>> = Arc::new(Mutex::new(HashMap::new()));
+    let pending: Arc<Mutex<HashMap<u64, mpsc::Sender<Value>>>> =
+        Arc::new(Mutex::new(HashMap::new()));
 
     let app_handle = app.clone();
     let reader_pending = pending.clone();
@@ -244,12 +255,44 @@ fn spawn_backend(app: &tauri::AppHandle) -> Result<BackendProcess, String> {
 }
 
 fn main_allowed(cmd: &str) -> bool {
-    matches!(cmd,
-        "status" | "protocol.info" | "events.tail" | "bridge.live_events" | "diagnostics.summary" | "models.runtime_status"
-        | "presence.dashboard" | "presence.quality" | "speech.start" | "speech.stop" | "hardware.refresh" | "hardware.windows_ml_catalog" | "hardware.ensure_windows_ml"
-        | "settings.set" | "tts.enabled" | "tts.speak" | "tts.stop" | "tts.barge_in" | "history.list" | "history.pin" | "history.delete" | "history.clear"
-        | "vocabulary.list" | "vocabulary.upsert" | "vocabulary.delete" | "app_rules.list" | "app_rules.upsert" | "app_rules.delete"
-        | "tasks.list" | "tasks.create" | "tasks.move" | "agents.list" | "agent.detect" | "agent.start" | "agent.stop")
+    matches!(
+        cmd,
+        "status"
+            | "protocol.info"
+            | "events.tail"
+            | "bridge.live_events"
+            | "diagnostics.summary"
+            | "models.runtime_status"
+            | "presence.dashboard"
+            | "presence.quality"
+            | "speech.start"
+            | "speech.stop"
+            | "hardware.refresh"
+            | "hardware.windows_ml_catalog"
+            | "hardware.ensure_windows_ml"
+            | "settings.set"
+            | "tts.enabled"
+            | "tts.speak"
+            | "tts.stop"
+            | "tts.barge_in"
+            | "history.list"
+            | "history.pin"
+            | "history.delete"
+            | "history.clear"
+            | "vocabulary.list"
+            | "vocabulary.upsert"
+            | "vocabulary.delete"
+            | "app_rules.list"
+            | "app_rules.upsert"
+            | "app_rules.delete"
+            | "tasks.list"
+            | "tasks.create"
+            | "tasks.move"
+            | "agents.list"
+            | "agent.detect"
+            | "agent.start"
+            | "agent.stop"
+    )
 }
 
 fn orb_allowed(cmd: &str) -> bool {
@@ -279,7 +322,11 @@ fn backend_command(
         "main" => main_allowed(&cmd),
         _ => false,
     };
-    if !allowed { return Err(format!("window {label} is not authorized for command {cmd}")); }
+    if !allowed {
+        return Err(format!(
+            "window {label} is not authorized for command {cmd}"
+        ));
+    }
     let id = state.next_id.fetch_add(1, Ordering::Relaxed);
     let timeout = Duration::from_millis(timeout_ms.unwrap_or(30_000).clamp(100, 600_000));
     state.process.request(id, &cmd, params, timeout)
@@ -287,18 +334,26 @@ fn backend_command(
 
 fn position_orb_on_primary(orb: &WebviewWindow) -> Result<(), String> {
     let monitor = orb.primary_monitor().map_err(|e| e.to_string())?;
-    let Some(monitor) = monitor else { return Ok(()); };
+    let Some(monitor) = monitor else {
+        return Ok(());
+    };
     let mon_pos = monitor.position();
     let mon_size = monitor.size();
     let orb_size = orb.outer_size().map_err(|e| e.to_string())?;
     let margin = 24i32;
     let x = mon_pos.x + mon_size.width as i32 - orb_size.width as i32 - margin;
     let y = mon_pos.y + mon_size.height as i32 - orb_size.height as i32 - margin;
-    orb.set_position(PhysicalPosition::new(x, y)).map_err(|e| e.to_string())
+    orb.set_position(PhysicalPosition::new(x, y))
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-fn window_command(app: tauri::AppHandle, window: WebviewWindow, action: String, value: Value) -> Result<(), String> {
+fn window_command(
+    app: tauri::AppHandle,
+    window: WebviewWindow,
+    action: String,
+    value: Value,
+) -> Result<(), String> {
     // The orb may only reveal the main window; it cannot change global window
     // authority or persistent settings.
     if window.label() == "orb" && action != "main.show" {
@@ -315,7 +370,8 @@ fn window_command(app: tauri::AppHandle, window: WebviewWindow, action: String, 
         "orb.scale" => {
             let scale = value.as_f64().unwrap_or(1.0).clamp(0.5, 2.0);
             let size = 360.0 * scale;
-            orb.set_size(LogicalSize::new(size, size)).map_err(|e| e.to_string())?;
+            orb.set_size(LogicalSize::new(size, size))
+                .map_err(|e| e.to_string())?;
         }
         "main.show" => {
             let main = app.get_webview_window("main").ok_or("main window not found")?;

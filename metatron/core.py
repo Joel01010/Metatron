@@ -17,7 +17,7 @@ from .memory import ModelBroker, Reservation
 from .models import DEFAULT_MODELS, model_catalog
 from .runs import RunStore
 from .scheduler import Scheduler
-from .telemetry import Telemetry, process_tree_rss_mib, system_memory
+from .telemetry import Telemetry, process_tree_charge_mib, system_memory
 from .agents.registry import AgentRegistry
 from .agents.hermes import HermesLocalAdapter, HermesCloudAdapter
 from .agents.codex import CodexAdapter
@@ -324,12 +324,13 @@ class Metatron:
             pid = agent.get("pid")
             if not pid:
                 continue
-            rss = process_tree_rss_mib(int(pid))
-            if rss is not None:
-                self.telemetry.record(agent["id"], "rss", rss, "MiB")
+            measured, measure_kind = process_tree_charge_mib(int(pid))
+            if measured is not None:
+                self.telemetry.record(agent["id"], measure_kind, measured, "MiB")
                 resource_name = f"agent:{agent['id']}"
                 try:
-                    self.memory.set_measured_mib(resource_name, rss)
+                    self.memory.set_measured_mib(resource_name, measured)
+                    self.memory.set_metadata(resource_name, measurement_kind=measure_kind)
                 except KeyError:
                     pass
         evicted = self.memory.reconcile()
