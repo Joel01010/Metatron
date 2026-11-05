@@ -7,7 +7,7 @@ import secrets
 import time
 import urllib.error
 import urllib.request
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 from .base import AgentState, AgentStatus
@@ -31,6 +31,8 @@ class OpenCodeAdapter(ProcessAdapter):
     port: int = 4096
     username: str = "opencode"
     password: str | None = None
+    _status_probe_at: float = field(default=-1.0, init=False, repr=False)
+    _status_probe_value: bool = field(default=False, init=False, repr=False)
 
     def __post_init__(self):
         configured = os.environ.get("OPENCODE_SERVER_PASSWORD") or None
@@ -79,7 +81,11 @@ class OpenCodeAdapter(ProcessAdapter):
         own = ProcessAdapter.status(self)
         if own.state == AgentState.RUNNING:
             return own
-        if self.server_available():
+        now = time.monotonic()
+        if self._status_probe_at < 0 or now - self._status_probe_at >= 5.0:
+            self._status_probe_value = self.server_available()
+            self._status_probe_at = now
+        if self._status_probe_value:
             return AgentStatus(self.id, self.label, self.kind, AgentState.IDLE, "headless server reachable")
         return own
 

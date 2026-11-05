@@ -15,3 +15,17 @@
 - [ ] Model/runtime licenses reviewed
 - [ ] SBOM/provenance regenerated
 - [ ] Signed installer/update provenance checked before enabling auto-update
+
+## v1.4 hardware qualification gates
+
+- [ ] `Test-PowerShellScripts.ps1` PASS on target Windows.
+- [ ] `cargo fmt -- --check` and `cargo check` PASS.
+- [ ] Full Tauri Windows bundle builds and `Verify-WindowsArtifacts.ps1` PASS.
+- [ ] Orb native-window visibility/bounds gate PASS.
+- [ ] Direct OpenVINO NPU, GPU and CPU compile+infer gates PASS on reference hardware.
+- [ ] Application model placement proof PASS through Windows ML worker.
+- [ ] Real microphone capture PASS; pinned EZSTT upstream protocol/e2e/focus/restart tests PASS.
+- [ ] Windows SAPI playback interruption PASS; premium TTS benchmark PASS when release assets are configured.
+- [ ] Idle/certified-core memory gates PASS with complete process coverage and commit measurements.
+- [ ] 30-minute minimum soak/leak gate PASS (longer pre-release soak recommended).
+- [ ] Release artifacts are signed and `signtool verify /pa` PASS before publication.

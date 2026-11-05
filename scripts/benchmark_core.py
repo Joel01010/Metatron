@@ -21,7 +21,7 @@ def pct(xs,p):
 def main():
     ap=argparse.ArgumentParser(); ap.add_argument('--samples',type=int,default=50); ap.add_argument('--json-out',default='')
     a=ap.parse_args()
-    env=os.environ.copy(); td=tempfile.TemporaryDirectory(); env['METATRON_DATA_DIR']=td.name; env['PYTHONPATH']=str(ROOT)
+    env=os.environ.copy(); td=tempfile.TemporaryDirectory(ignore_cleanup_errors=True); env['METATRON_DATA_DIR']=td.name; env['PYTHONPATH']=str(ROOT)
     t0=time.perf_counter()
     p=subprocess.Popen([sys.executable,'-X','utf8','-m','metatron.main'],cwd=ROOT,env=env,stdin=subprocess.PIPE,stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True,encoding='utf-8',bufsize=1)
     spawn_call_ms=(time.perf_counter()-t0)*1000

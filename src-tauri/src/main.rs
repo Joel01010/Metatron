@@ -13,12 +13,12 @@ use std::{
     thread,
     time::Duration,
 };
-use tauri::{Emitter, LogicalSize, Manager, State, WebviewWindow};
+use tauri::{Emitter, LogicalSize, Manager, PhysicalPosition, State, WebviewWindow};
 
 
 #[cfg(windows)]
 struct BackendJob {
-    handle: windows_sys::Win32::Foundation::HANDLE,
+    handle: usize,
 }
 
 #[cfg(windows)]
@@ -55,7 +55,7 @@ impl BackendJob {
                 CloseHandle(job);
                 return Err("AssignProcessToJobObject failed".into());
             }
-            Ok(Self { handle: job })
+            Ok(Self { handle: job as usize })
         }
     }
 }
@@ -64,8 +64,8 @@ impl BackendJob {
 impl Drop for BackendJob {
     fn drop(&mut self) {
         unsafe {
-            if !self.handle.is_null() {
-                let _ = windows_sys::Win32::Foundation::CloseHandle(self.handle);
+            if self.handle != 0 {
+                let _ = windows_sys::Win32::Foundation::CloseHandle(self.handle as windows_sys::Win32::Foundation::HANDLE);
             }
         }
     }
@@ -181,7 +181,15 @@ fn spawn_backend(app: &tauri::AppHandle) -> Result<BackendProcess, String> {
         .spawn()
         .map_err(|e| format!("failed to start Metatron backend: {e}"))?;
     #[cfg(windows)]
-    let backend_job = BackendJob::create_and_assign(&child)?;
+    let backend_job = match BackendJob::create_and_assign(&child) {
+        Ok(job) => job,
+        Err(err) => {
+            // Never leave an unowned backend running when job assignment fails.
+            let _ = child.kill();
+            let _ = child.wait();
+            return Err(err);
+        }
+    };
     let stdin = child.stdin.take().ok_or("backend stdin unavailable")?;
     let stdout = child.stdout.take().ok_or("backend stdout unavailable")?;
     let stderr = child.stderr.take().ok_or("backend stderr unavailable")?;
@@ -277,6 +285,18 @@ fn backend_command(
     state.process.request(id, &cmd, params, timeout)
 }
 
+fn position_orb_on_primary(orb: &WebviewWindow) -> Result<(), String> {
+    let monitor = orb.primary_monitor().map_err(|e| e.to_string())?;
+    let Some(monitor) = monitor else { return Ok(()); };
+    let mon_pos = monitor.position();
+    let mon_size = monitor.size();
+    let orb_size = orb.outer_size().map_err(|e| e.to_string())?;
+    let margin = 24i32;
+    let x = mon_pos.x + mon_size.width as i32 - orb_size.width as i32 - margin;
+    let y = mon_pos.y + mon_size.height as i32 - orb_size.height as i32 - margin;
+    orb.set_position(PhysicalPosition::new(x, y)).map_err(|e| e.to_string())
+}
+
 #[tauri::command]
 fn window_command(app: tauri::AppHandle, window: WebviewWindow, action: String, value: Value) -> Result<(), String> {
     // The orb may only reveal the main window; it cannot change global window
@@ -291,6 +311,7 @@ fn window_command(app: tauri::AppHandle, window: WebviewWindow, action: String, 
         "orb.always_on_top" => orb
             .set_always_on_top(value.as_bool().unwrap_or(true))
             .map_err(|e| e.to_string())?,
+        "orb.reposition" => position_orb_on_primary(&orb)?,
         "orb.scale" => {
             let scale = value.as_f64().unwrap_or(1.0).clamp(0.5, 2.0);
             let size = 360.0 * scale;
@@ -324,6 +345,13 @@ fn main() {
                 process: backend,
                 next_id: AtomicU64::new(1),
             });
+            // Tauri creates the presence WebView separately. Make its initial state
+            // explicit rather than depending on platform-specific default stacking.
+            if let Some(orb) = app.get_webview_window("orb") {
+                orb.set_always_on_top(true)?;
+                position_orb_on_primary(&orb).map_err(std::io::Error::other)?;
+                orb.show()?;
+            }
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![backend_command, window_command])

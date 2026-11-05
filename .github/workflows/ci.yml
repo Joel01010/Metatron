@@ -55,12 +55,23 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - name: Tauri host cargo check
+      - name: PowerShell parser and metrics smoke
+        shell: pwsh
+        run: ./scripts/Test-PowerShellScripts.ps1 -Python python
+      - name: Tauri host format and cargo check
         working-directory: src-tauri
-        run: cargo check
+        run: |
+          cargo fmt -- --check
+          cargo check
       - name: Windows validation harness smoke
         shell: pwsh
         run: ./scripts/Invoke-MetatronFullValidation.ps1 -SkipAccelerators -SkipSpeech -SkipTTS -OutputDir build/ci-validation
+      - name: Full Windows package build
+        shell: pwsh
+        run: ./scripts/Build-Windows.ps1 -Python python -BuildVenv build/ci-build-venv
+      - name: Verify Windows installer artifacts
+        shell: pwsh
+        run: ./scripts/Verify-WindowsArtifacts.ps1 | Out-File -Encoding utf8 build/ci-validation/windows-artifacts.json
       - uses: actions/upload-artifact@v4
         if: always()
         with:

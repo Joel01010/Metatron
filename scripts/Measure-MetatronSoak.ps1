@@ -1,0 +1,6 @@
+param([string]$AppExe="",[int]$DurationMinutes=30,[int]$IntervalSeconds=5,[string]$Python="python",[string]$OutDir="",[switch]$SkipGpu,[double]$MaxGrowthMiBPerHour=64)
+$ErrorActionPreference='Stop';$Root=Split-Path -Parent $PSScriptRoot
+if(-not$OutDir){$OutDir=Join-Path $Root ('build\soak-'+(Get-Date -Format 'yyyyMMdd-HHmmss'))};New-Item -ItemType Directory -Force $OutDir|Out-Null
+if(-not$AppExe){$AppExe=@((Join-Path $Root 'src-tauri\target\release\metatron.exe'),(Join-Path $Root 'src-tauri\target\release\Metatron.exe'))|Where-Object{Test-Path $_}|Select-Object -First 1};if(-not$AppExe){throw 'Built Metatron executable not found'}
+$p=Start-Process $AppExe -PassThru
+try{Start-Sleep 8;if($p.HasExited){throw "Metatron exited: $($p.ExitCode)"};$m=Join-Path $OutDir 'soak-metrics.json';& $PSScriptRoot\Collect-WindowsMetrics.ps1 -RootProcessId $p.Id -DurationSeconds ($DurationMinutes*60) -IntervalMilliseconds ($IntervalSeconds*1000) -OutFile $m -SkipGpu:$SkipGpu;& $Python $PSScriptRoot\Analyze-Soak.py $m --max-growth-mib-per-hour $MaxGrowthMiBPerHour --json-out (Join-Path $OutDir 'soak-analysis.json');if($LASTEXITCODE-ne0){throw 'Soak/leak gate failed'}}finally{try{$p.CloseMainWindow()|Out-Null;Start-Sleep 2}catch{};if(-not$p.HasExited){Stop-Process $p.Id -Force -ErrorAction SilentlyContinue}}

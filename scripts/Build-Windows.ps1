@@ -14,7 +14,7 @@ $Py = Join-Path $BuildVenv 'Scripts\python.exe'
 & $Py -m pip install --upgrade pip
 & $Py -m pip install pytest pyinstaller
 $oldPlugin=$env:PYTEST_DISABLE_PLUGIN_AUTOLOAD;$env:PYTEST_DISABLE_PLUGIN_AUTOLOAD='1'
-try { & $Py -W error -m pytest tests -q } finally { $env:PYTEST_DISABLE_PLUGIN_AUTOLOAD=$oldPlugin }
+try { & $Python -W error -m pytest tests -q } finally { $env:PYTEST_DISABLE_PLUGIN_AUTOLOAD=$oldPlugin }
 if ($LASTEXITCODE -ne 0) { throw 'Python tests failed.' }
 & $Py scripts\product_audit.py
 if ($LASTEXITCODE -ne 0) { throw 'Product audit failed.' }
@@ -42,4 +42,10 @@ Set-Location (Join-Path $Root 'src-tauri')
 try { cargo tauri --version | Out-Null } catch { cargo install tauri-cli --version '^2.0' --locked }
 cargo tauri build
 if ($LASTEXITCODE -ne 0) { throw 'Tauri build failed.' }
+# The installer bundles the backend; a raw target\release\metatron.exe does not.
+# Copy it for standalone smoke testing without altering installer resources.
+$ExeResourceDir = Join-Path $Root 'src-tauri\target\release\resources\metatron-backend'
+New-Item -ItemType Directory -Force (Split-Path -Parent $ExeResourceDir) | Out-Null
+if (Test-Path $ExeResourceDir) { Remove-Item $ExeResourceDir -Recurse -Force }
+Copy-Item (Join-Path $Dist 'metatron-backend') $ExeResourceDir -Recurse -Force
 Write-Host 'Metatron build complete. See src-tauri\target\release\bundle.' -ForegroundColor Green

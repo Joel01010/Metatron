@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.4.0 — Hardware qualification and diagnostics hardening
+
+- Added direct OpenVINO NPU/GPU/CPU compile-and-infer verifier using upstream device APIs.
+- Added Windows audio endpoint capture smoke testing and TTS interruption verification.
+- Added bounded soak/leak qualification with trend analysis.
+- Added orb on-screen repositioning and native window visibility/bounds verifier.
+- Added installer/signature verification and stronger Windows CI build gates.
+- Hardened diagnostics so missing/partial measurements cannot be treated as zero or PASS.
+- Version-aligned Python, Tauri, qualification reports and release metadata at 1.4.0.
+
 ## 1.3.0 — Professional product layer
 
 ### Product

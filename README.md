@@ -1,4 +1,4 @@
-# Metatron v1.3.0
+# Metatron v1.4.0
 
 **Windows-first, local-first dictation and desktop intelligence with truthful accelerator placement and a strict memory governor.**
 
@@ -109,3 +109,7 @@ See `SECURITY.md` and `docs/PRIVACY_AND_HISTORY.md`.
 ## License
 
 Metatron source is MIT licensed. Optional models/runtimes keep their own licenses and are not automatically redistributed by this repository. See `THIRD_PARTY.md`, `docs/LICENSE_GATE.md`, and `models.lock.json` before publishing a binary/model bundle.
+
+## v1.4 full Windows qualification
+
+After installing the optional qualification runtime and any licensed speech/TTS assets, run `scripts/Invoke-MetatronV14Qualification.ps1`. It drives PowerShell script checks, Rust/Tauri build gates, OpenVINO NPU/GPU/CPU proof, microphone capture, TTS interruption, orb visibility, full-system memory collection, a configurable soak/leak gate, installer verification, and optionally the pinned EZSTT upstream Windows tests. See `V1.4_VERIFICATION_AND_HANDOFF.md`.

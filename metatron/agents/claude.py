@@ -36,8 +36,17 @@ class ClaudeCodeAdapter:
     _last_result: dict[str, Any] | None = field(default=None, init=False, repr=False)
     _job: object | None = field(default=None, init=False, repr=False)
 
+    _detect_at: float = field(default=-1.0, init=False, repr=False)
+    _detect_exe: str = field(default="", init=False, repr=False)
+    _detect_key: str = field(default="", init=False, repr=False)
+
     def detect(self) -> dict[str, Any]:
-        exe = shutil.which(self.executable) or (self.executable if Path(self.executable).exists() else None)
+        now = time.monotonic()
+        if self._detect_at < 0 or now - self._detect_at >= 10.0 or self._detect_key != self.executable:
+            self._detect_exe = shutil.which(self.executable) or (self.executable if Path(self.executable).exists() else "")
+            self._detect_at = now
+            self._detect_key = self.executable
+        exe = self._detect_exe or None
         return {"available": bool(exe), "path": exe, "transport": "headless-print"}
 
     def status(self) -> AgentStatus:
