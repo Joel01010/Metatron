@@ -15,6 +15,7 @@ class MemoryProfile:
     reserve_headroom_mib: int
     max_local_agents: int
     min_system_available_mib: int
+    max_system_commit_percent: float
     description: str
 
 
@@ -28,6 +29,7 @@ MEMORY_PROFILES: dict[str, MemoryProfile] = {
         reserve_headroom_mib=224,
         max_local_agents=1,
         min_system_available_mib=1024,
+        max_system_commit_percent=90.0,
         description="Default 2-3 GiB whole-platform mode; large local assistants are refused.",
     ),
     "voice": MemoryProfile(
@@ -39,6 +41,7 @@ MEMORY_PROFILES: dict[str, MemoryProfile] = {
         reserve_headroom_mib=224,
         max_local_agents=1,
         min_system_available_mib=1024,
+        max_system_commit_percent=90.0,
         description="Dictation-first mode; dashboard should be closed and optional workers evict quickly.",
     ),
     "agent": MemoryProfile(
@@ -50,6 +53,7 @@ MEMORY_PROFILES: dict[str, MemoryProfile] = {
         reserve_headroom_mib=192,
         max_local_agents=2,
         min_system_available_mib=768,
+        max_system_commit_percent=92.0,
         description="Upper edge of the user's ceiling; permits more agent tooling, not a resident 9B model.",
     ),
 }

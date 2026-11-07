@@ -51,6 +51,22 @@ class Scheduler:
             out.append(r)
         return out
 
+    def set_enabled(self, schedule_id: str, enabled: bool) -> dict:
+        self.get(schedule_id)
+        now = time.time()
+        self.db.execute("UPDATE schedules SET enabled=?,updated_at=? WHERE id=?", (1 if enabled else 0, now, schedule_id))
+        self.bus.emit("schedule.updated", "user", {"schedule_id": schedule_id, "enabled": bool(enabled)})
+        return self.get(schedule_id)
+
+    def delete(self, schedule_id: str) -> bool:
+        self.get(schedule_id)
+        cur = self.db.execute("DELETE FROM schedules WHERE id=?", (schedule_id,))
+        deleted = bool(cur.rowcount)
+        if deleted:
+            self.bus.emit("schedule.deleted", "user", {"schedule_id": schedule_id})
+        return deleted
+
+
     def due(self, now: float | None = None) -> list[dict]:
         now = time.time() if now is None else float(now)
         rows = self.db.query("SELECT * FROM schedules WHERE enabled=1 AND next_run<=? ORDER BY next_run", (now,))

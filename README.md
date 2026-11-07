@@ -1,8 +1,8 @@
 # Metatron v1.4.0
 
-**Windows-first, local-first dictation and desktop intelligence with truthful accelerator placement and a strict memory governor.**
+**Windows-first, local-first desktop intelligence with private dictation, a reactive animated core, optional multi-pet companions, explicit automation and truthful accelerator placement under a strict memory governor.**
 
-Metatron is an open-source Tauri/WebView2 desktop application designed to keep its control plane small while dispatching heavy ML work to disposable sidecars. Its certified core is intentionally narrow: **dictation, reactive presence, memory governance, and truthful NPU → GPU → CPU placement**. Agent adapters, scheduler automation, and semantic cleanup are available but remain explicitly experimental.
+Metatron is an open-source Tauri/WebView2 desktop application designed to keep its control plane small while dispatching heavy ML work to disposable sidecars. Its certified core is intentionally narrow: **dictation, reactive presence, memory governance, and truthful NPU → GPU → CPU placement**. The local Kanban/scheduler/approval layer is productized with explicit execution controls. Agent execution adapters and semantic cleanup remain explicitly experimental until their upstream behavior is independently qualified.
 
 ## Product principles
 
@@ -10,13 +10,13 @@ Metatron is an open-source Tauri/WebView2 desktop application designed to keep i
 - **Detected is not routable; selected is not actual.** Metatron reports detected, routable, selected, session-created, and verified actual placement separately.
 - **Strict memory ownership.** Heavy runtimes are disposable workers; Strict Mode's logical managed ceiling is 2816 MiB.
 - **Local and private by default.** Transcript history starts off. Support bundles exclude the SQLite DB, transcript history, audio, and secrets.
-- **A real desktop product, not an admin console.** v1.3 adds onboarding, command palette, history, dictionary, per-app policies, model center, diagnostics, and full-system qualification tooling.
+- **A real desktop product, not an admin console.** The product layer includes onboarding, command palette, searchable settings, history, dictionary, per-app policies, model center, diagnostics, tray recovery, configurable animated Presence, companions and an explicit Automation Center.
 
-## v1.3 workspaces
+## Product workspaces
 
 Home · Dictation · History · Dictionary · Hardware · Models · Voice · Metrics · Tasks · Agents · Diagnostics · Settings
 
-The UI keeps the pale-red/golden procedural orb as Metatron's presence. User speech drives inward energy; TTS drives outward energy. High-rate level events are pushed through a bounded latest-wins channel at ~30 Hz and stop when no renderer subscribes.
+Presence now supports **Orb / Pet / Both**. The canonical renderer provides Solar, Lattice and Reactor procedural core geometries plus up to four independently configured lightweight companions in the same WebView. User speech drives inward energy; TTS drives outward energy; tasks/runs/approvals create short companion/core reactions. Reduced Motion stops JavaScript pet motion as well as CSS animation, and adaptive mode simplifies companions under memory pressure. High-rate level events use the existing bounded latest-wins channel and stop when no renderer subscribes. See `docs/PRESENCE_AND_COMPANIONS.md`.
 
 ## Quick start for developers
 
@@ -27,14 +27,13 @@ python -W error -m pytest -q
 python scripts\product_audit.py
 ```
 
-On a full Windows 11 machine:
+On a full Windows 11 machine, the normal operator path is simply:
 
-```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\Test-WindowsPrerequisites.ps1 -RequireDevTools
-powershell -ExecutionPolicy Bypass -File .\scripts\Bootstrap-Windows.ps1 -AllRuntimes -Build -Validate
+```text
+Double-click TEST-METATRON.cmd
 ```
 
-The runtime root defaults to `%LOCALAPPDATA%\Metatron`. No optional runtime/model is installed unless the corresponding setup switch is supplied.
+The launcher prepares missing build/test prerequisites when possible, creates an isolated test Python, provisions Windows ML, the pinned EZSTT/Parakeet runtime and Kokoro, builds the product, runs hardware/speech/TTS/Presence/memory gates, and produces one evidence ZIP on PASS or FAIL. See `TESTING.md`. `TEST-METATRON-QUICK.cmd` is available for short code-only regressions but does not replace full Windows qualification.
 
 ## Hardware routing
 
@@ -63,6 +62,10 @@ If a speech sidecar does not implement `active_app`, `set_app_policy`, or `set_p
 
 TTS stays outside the core process. Premium mode targets Kokoro; light mode can use Piper/Windows voice fallback. TTS speaks important system replies by default and can be disabled completely. The orb reacts to real TTS level events.
 
+## Tasks and automation
+
+Tasks now include an Automation Center for interval schedules, human approvals and persistent agent-run history. Schedules create **Ready** cards but never silently execute agents; agent execution remains an explicit Run action with manual reconciliation/cancellation. The UI reuses the existing authorized task command contract, so the established 35-command dashboard boundary is not widened. See `docs/AUTOMATION_CENTER.md`.
+
 ## Validation status
 
 The source package includes portable regression tests, Windows CI, a product/security audit, core benchmark, accelerator verifier, speech-runtime verifier, Windows process/GPU memory sampler, pinned release gates, privacy-conscious support bundle, and one-command full-system validation.
@@ -73,7 +76,7 @@ The release package clearly distinguishes:
 - **implemented but Windows-required** — Tauri host build, Job Objects, DPAPI, WebView2 desktop behavior;
 - **accelerator-gated** — NPU/GPU placement proof, Parakeet latency, power/utilization, hardware-specific model compile/cache behavior.
 
-See `docs/FULL_SYSTEM_VALIDATION.md` and `qualification_thresholds.json`.
+See `docs/FULL_SYSTEM_VALIDATION.md`, `docs/PRESENCE_AND_COMPANIONS.md`, `docs/AUTOMATION_CENTER.md` and `qualification_thresholds.json`.
 
 ## Repository map
 
@@ -112,4 +115,4 @@ Metatron source is MIT licensed. Optional models/runtimes keep their own license
 
 ## v1.4 full Windows qualification
 
-After installing the optional qualification runtime and any licensed speech/TTS assets, run `scripts/Invoke-MetatronV14Qualification.ps1`. It drives PowerShell script checks, Rust/Tauri build gates, OpenVINO NPU/GPU/CPU proof, microphone capture, TTS interruption, orb visibility, full-system memory collection, a configurable soak/leak gate, installer verification, and optionally the pinned EZSTT upstream Windows tests. See `V1.4_VERIFICATION_AND_HANDOFF.md`.
+For final Windows qualification, double-click `TEST-METATRON.cmd`. The underlying `scripts/Invoke-MetatronReleaseClosure.ps1` is now self-preparing: it can install/repair the test toolchain, configures Windows ML, generates its own ONNX placement probe, provisions the pinned speech/TTS runtimes, then drives the PowerShell/Rust/Tauri build gates, OpenVINO NPU/GPU/CPU proof, microphone capture, Metatron↔EZSTT placement, pinned EZSTT protocol/focus/restart/E2E, Kokoro benchmarking, deterministic Presence-window placement, full-system memory collection, a 60-minute soak, SBOM generation and installer verification. `Invoke-MetatronV14Qualification.ps1` remains available for narrower diagnostic runs. See `FULL_PRODUCT_HANDOFF_2026-11-07.md` for the current candidate and `RELEASE_CLOSURE_HANDOFF_2026-11-06.md` for the preceding closure baseline.

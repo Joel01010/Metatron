@@ -173,11 +173,17 @@ class SpeechRuntime:
                 'hotkey': self.settings.hotkey,
                 'mode': self.settings.mode,
                 'injection_method': self.settings.injection_method,
-            'active_app':self._active_app,'privacy_runtime_supported':self._privacy_runtime_supported,'personalization_runtime_supported':self._vocabulary_runtime_supported,
-            'context_awareness':self.settings.context_awareness,'dictionary_enabled':self.settings.dictionary_enabled,'default_context_profile':self.settings.default_context_profile,
+                'active_app': self._active_app,
+                'privacy_runtime_supported': self._privacy_runtime_supported,
+                'personalization_runtime_supported': self._vocabulary_runtime_supported,
+                'context_awareness': self.settings.context_awareness,
+                'dictionary_enabled': self.settings.dictionary_enabled,
+                'default_context_profile': self.settings.default_context_profile,
             }
             try:
-                result = self.request('set_config', params, timeout_s=45 if chosen != 'CPU' else 60)
+                # A cold Parakeet/NPU compile can exceed a minute; the pinned EZSTT
+                # adapter returns only after compile + warm-up + execution-device proof.
+                result = self.request('set_config', params, timeout_s=180 if chosen != 'CPU' else 120)
                 if isinstance(result, dict):
                     actual = str(result.get('actual_device') or result.get('device') or '').upper()
                     verified = bool(result.get('placement_verified', False))
@@ -276,9 +282,16 @@ class SpeechRuntime:
         if self._privacy_runtime_supported is False:return
         try:
             result=self.request("set_app_policy",{"app_id":app_id,"paused":bool(paused),"allow_context":bool(allow_context),"context_profile":profile},timeout_s=3.0)
-            supported=not (isinstance(result,dict) and result.get("supported") is False); self._privacy_runtime_supported=bool(supported)
-            if not supported: raise RuntimeError("speech sidecar reports app-policy control unsupported")
-            self.bus.emit("speech.app_policy.applied","speech",{"app_id":app_id,"paused":paused,"allow_context":allow_context,"context_profile":profile})
+            supported = not (isinstance(result, dict) and result.get("supported") is False)
+            self._privacy_runtime_supported = bool(supported)
+            if not supported:
+                raise RuntimeError("speech sidecar reports app-policy control unsupported")
+            applied = not (isinstance(result, dict) and result.get("applied") is False)
+            topic = "speech.app_policy.applied" if applied else "speech.app_policy.deferred"
+            self.bus.emit(topic, "speech", {
+                "app_id": app_id, "paused": paused, "allow_context": allow_context,
+                "context_profile": profile, "applied": applied,
+            })
         except Exception as exc:
             self._privacy_runtime_supported=False; self.bus.emit("speech.app_policy.unsupported","speech",{"app_id":app_id,"error":str(exc),"note":"Rules remain stored; runtime enforcement requires sidecar support."})
 
@@ -289,9 +302,16 @@ class SpeechRuntime:
             state = str(obj.get('state') or '').upper(); self._last_state = state
             if state == 'LISTENING': self.presence.user_started()
             elif state == 'TRANSCRIBING': self.presence.asr_started()
-            elif state in {'READY','IDLE','INJECTED','NOSPEECH'}:
+            elif state in {'READY','IDLE','INJECTED','NOSPEECH','PRIVACY_PAUSED'}:
                 self.presence.user_stopped()
-                if state == 'INJECTED': self._emit_final_transcript(obj,status='completed')
+                if state == 'INJECTED':
+                    self._emit_final_transcript(obj, status='completed')
+                elif state == 'PRIVACY_PAUSED':
+                    self.presence.signal('warning', str(obj.get('detail') or 'Dictation paused by active-app privacy policy'), source='speech')
+                    self.bus.emit('speech.privacy.paused', 'speech', {
+                        'detail': str(obj.get('detail') or ''),
+                        'active_app': dict(self._active_app or {}),
+                    })
             elif state == 'INJECTION_BLOCKED':
                 self.presence.user_stopped()
                 self.presence.signal('warning', str(obj.get('detail') or 'Text injection was blocked by Windows integrity/UIPI policy'), source='speech')
@@ -370,15 +390,27 @@ class SpeechRuntime:
         return self.status()
 
     def status(self) -> dict[str, Any]:
+        peak = None
+        if self._job is not None:
+            try:
+                p = self._job.peak_memory()
+                peak = {'peak_process_mib': float(p.peak_process_mib), 'peak_job_mib': float(p.peak_job_mib)}
+            except Exception:
+                peak = None
         return {
             'enabled': self.settings.enabled, 'configured': self.configured,
             'running': self.running, 'pid': self.pid, 'state': self._last_state,
-            'model': self.settings.model, 'selected_device': self._selected_device, 'device_candidates': list(self._device_candidates), 'actual_device': self._actual_device,
+            'model': self.settings.model, 'selected_device': self._selected_device,
+            'device_candidates': list(self._device_candidates), 'actual_device': self._actual_device,
             'device_order': list(self.settings.device_order), 'cleanup_enabled': self.settings.cleanup_enabled,
             'hotkey': self.settings.hotkey, 'mode': self.settings.mode,
             'injection_method': self.settings.injection_method,
-            'active_app':self._active_app,'privacy_runtime_supported':self._privacy_runtime_supported,'personalization_runtime_supported':self._vocabulary_runtime_supported,
-            'context_awareness':self.settings.context_awareness,'dictionary_enabled':self.settings.dictionary_enabled,'default_context_profile':self.settings.default_context_profile,
+            'active_app': self._active_app, 'privacy_runtime_supported': self._privacy_runtime_supported,
+            'personalization_runtime_supported': self._vocabulary_runtime_supported,
+            'context_awareness': self.settings.context_awareness,
+            'dictionary_enabled': self.settings.dictionary_enabled,
+            'default_context_profile': self.settings.default_context_profile,
+            'job_peak_memory': peak,
         }
 
     def events(self, clear: bool = False) -> list[dict[str, Any]]:
@@ -390,5 +422,35 @@ class SpeechRuntime:
         self.stop()
 
 
+def _speech_command_manifest_path() -> Path | None:
+    if os.name != 'nt':
+        return None
+    local = os.environ.get('LOCALAPPDATA', '').strip()
+    if not local:
+        return None
+    return Path(local) / 'Metatron' / 'runtimes' / 'speech-command.json'
+
+
 def speech_command_from_env() -> list[str]:
-    return _split_command(os.environ.get('METATRON_SPEECH_CMD',''))
+    """Resolve the speech sidecar command.
+
+    The environment remains the highest-precedence override. Setup-SpeechRuntime
+    also writes a small non-secret command manifest under LOCALAPPDATA so a
+    normal desktop launch stays configured without depending on a shell that
+    inherited setup-time environment variables.
+    """
+    raw = os.environ.get('METATRON_SPEECH_CMD', '')
+    if raw.strip():
+        return _split_command(raw)
+    manifest = _speech_command_manifest_path()
+    if manifest is None:
+        return []
+    try:
+        obj = json.loads(manifest.read_text(encoding='utf-8-sig'))
+        command = obj.get('command') if isinstance(obj, dict) else None
+        if not isinstance(command, list) or not command:
+            return []
+        out = [str(x) for x in command if isinstance(x, str) and x.strip()]
+        return out if len(out) == len(command) else []
+    except (OSError, ValueError, TypeError):
+        return []

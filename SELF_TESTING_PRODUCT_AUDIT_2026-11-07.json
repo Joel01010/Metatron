@@ -1,0 +1,53 @@
+{
+  "schema": 1,
+  "version": "1.4.0",
+  "passed": 9,
+  "total": 9,
+  "checks": [
+    {
+      "name": "unique_html_ids",
+      "ok": true,
+      "detail": "125 ids"
+    },
+    {
+      "name": "professional_views_present",
+      "ok": true,
+      "detail": "12 views"
+    },
+    {
+      "name": "ui_backend_commands_exist",
+      "ok": true,
+      "detail": "36 commands checked"
+    },
+    {
+      "name": "dashboard_command_allowlist",
+      "ok": true,
+      "detail": "35 commands authorized"
+    },
+    {
+      "name": "csp_enabled",
+      "ok": true,
+      "detail": "default-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src ipc: http://ipc.localhost"
+    },
+    {
+      "name": "version_consistent",
+      "ok": true,
+      "detail": "python=1.4.0, tauri=1.4.0"
+    },
+    {
+      "name": "single_orb_renderer",
+      "ok": true,
+      "detail": "ui/orb-renderer.js"
+    },
+    {
+      "name": "no_machine_specific_z_drive",
+      "ok": true,
+      "detail": "clean"
+    },
+    {
+      "name": "full_system_tooling_present",
+      "ok": true,
+      "detail": "all present"
+    }
+  ]
+}

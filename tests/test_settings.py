@@ -38,3 +38,26 @@ def test_reset_section():
     db = DummyDB(); s = SettingsStore(db)
     s.set("presence", {"quality": "eco"})
     assert s.reset("presence")["quality"] == "balanced"
+
+
+def test_dashboard_layout_validation():
+    s = SettingsStore(DummyDB())
+    updated = s.set("dashboard", {
+        "home_stack_order": ["memory", "dictation", "quick-actions"],
+        "overview_order": ["agents", "workflow", "activity"],
+        "hidden_widgets": ["activity"],
+    })
+    assert updated["home_stack_order"][0] == "memory"
+    assert updated["hidden_widgets"] == ["activity"]
+    with pytest.raises(ValueError, match="exactly once"):
+        s.set("dashboard", {"home_stack_order": ["memory", "memory", "quick-actions"]})
+    with pytest.raises(ValueError, match="unknown or duplicate"):
+        s.set("dashboard", {"hidden_widgets": ["not-a-widget"]})
+
+
+def test_speech_settings_match_pinned_ezstt_protocol():
+    s = SettingsStore(DummyDB())
+    with pytest.raises(ValueError):
+        s.set("speech", {"mode": "always"})
+    with pytest.raises(ValueError):
+        s.set("speech", {"injection_method": "clipboard"})

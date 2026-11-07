@@ -549,7 +549,14 @@ class TTSManager:
                 if measured is not None:
                     try:
                         self.broker.set_measured_mib(provider.resource_name, measured)
-                        self.broker.set_metadata(provider.resource_name, measurement_kind=measure_kind)
+                        metadata = {"measurement_kind": measure_kind}
+                        worker = getattr(provider, "_worker", None)
+                        if worker is not None:
+                            peak = worker.peak_memory()
+                            if peak:
+                                metadata.update(peak)
+                                self.telemetry.record("tts", "job_peak_commit", peak["peak_job_mib"], "MiB", {"provider": provider.id})
+                        self.broker.set_metadata(provider.resource_name, **metadata)
                         self.telemetry.record(
                             "tts", measure_kind, measured, "MiB", {"provider": provider.id}
                         )

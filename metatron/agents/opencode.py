@@ -127,3 +127,10 @@ class OpenCodeAdapter(ProcessAdapter):
     def abort(self, session_id: str) -> bool:
         result = self._request("POST", f"/session/{session_id}/abort", {}, timeout=5.0)
         return bool(result)
+
+    def session_status(self, session_id: str | None) -> dict[str, Any]:
+        target = str(session_id or "").strip()
+        if not target:
+            return {"available": False, "reason": "no OpenCode session selected"}
+        result = self._request("GET", f"/session/{target}", timeout=3.0)
+        return result if isinstance(result, dict) else {"raw": result}

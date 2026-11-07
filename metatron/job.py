@@ -12,6 +12,12 @@ class JobAccounting:
     total_kernel_time_100ns: int = 0
 
 
+@dataclass(slots=True)
+class JobMemoryAccounting:
+    peak_process_mib: float = 0.0
+    peak_job_mib: float = 0.0
+
+
 class WindowsJob:
     """Own a Windows Job Object with kill-on-close semantics.
 
@@ -110,6 +116,51 @@ class WindowsJob:
             total_user_time_100ns=int(info.TotalUserTime), total_kernel_time_100ns=int(info.TotalKernelTime),
         )
 
+
+    def peak_memory(self) -> JobMemoryAccounting:
+        """OS-maintained peak private commit for processes owned by this job.
+
+        Unlike periodic process-tree sampling this survives short allocation
+        spikes between samples, so it is useful corroborating evidence for the
+        memory governor and qualification reports.
+        """
+        c = self._ctypes
+        wt = self._wintypes
+
+        class IO_COUNTERS(c.Structure):
+            _fields_ = [
+                ("ReadOperationCount", c.c_ulonglong), ("WriteOperationCount", c.c_ulonglong),
+                ("OtherOperationCount", c.c_ulonglong), ("ReadTransferCount", c.c_ulonglong),
+                ("WriteTransferCount", c.c_ulonglong), ("OtherTransferCount", c.c_ulonglong),
+            ]
+
+        class BASIC_LIMIT(c.Structure):
+            _fields_ = [
+                ("PerProcessUserTimeLimit", c.c_longlong), ("PerJobUserTimeLimit", c.c_longlong),
+                ("LimitFlags", wt.DWORD), ("MinimumWorkingSetSize", c.c_size_t),
+                ("MaximumWorkingSetSize", c.c_size_t), ("ActiveProcessLimit", wt.DWORD),
+                ("Affinity", c.c_size_t), ("PriorityClass", wt.DWORD), ("SchedulingClass", wt.DWORD),
+            ]
+
+        class EXTENDED_LIMIT(c.Structure):
+            _fields_ = [
+                ("BasicLimitInformation", BASIC_LIMIT), ("IoInfo", IO_COUNTERS),
+                ("ProcessMemoryLimit", c.c_size_t), ("JobMemoryLimit", c.c_size_t),
+                ("PeakProcessMemoryUsed", c.c_size_t), ("PeakJobMemoryUsed", c.c_size_t),
+            ]
+
+        JobObjectExtendedLimitInformation = 9
+        info = EXTENDED_LIMIT()
+        if not self._k32.QueryInformationJobObject(
+            self.handle, JobObjectExtendedLimitInformation, c.byref(info), c.sizeof(info), None
+        ):
+            raise c.WinError(c.get_last_error())
+        mib = 1024.0 * 1024.0
+        return JobMemoryAccounting(
+            peak_process_mib=float(info.PeakProcessMemoryUsed) / mib,
+            peak_job_mib=float(info.PeakJobMemoryUsed) / mib,
+        )
+
     def close(self) -> None:
         if getattr(self, "handle", None):
             self._k32.CloseHandle(self.handle)
@@ -123,6 +174,7 @@ class WindowsJob:
 class NullJob:
     def assign_pid(self, pid: int) -> None: return None
     def accounting(self) -> JobAccounting: return JobAccounting()
+    def peak_memory(self) -> JobMemoryAccounting: return JobMemoryAccounting()
     def close(self) -> None: return None
 
 

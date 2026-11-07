@@ -70,16 +70,24 @@ def test_windows_reverification_regressions_are_locked_down():
     assert desktop.count('{') == desktop.count('}')
 
     wrapper=(ROOT/'scripts/Invoke-MetatronV14Qualification.ps1').read_text(encoding='utf-8')
-    assert '$fwd=@(' in wrapper
-    assert '@fwd' in wrapper
+    assert '$fullArgs=@(' in wrapper
+    assert "'-SoakMinutes',[string]$SoakMinutes" in wrapper
+    assert "$fullArgs+=@('-ModelPath',$ModelPath)" in wrapper
+    assert '& powershell @fullArgs' in wrapper
     assert '$args=@(' not in wrapper
     assert 'Test-Path $qroot' in wrapper
     assert '$qroot -and' in wrapper
+    assert 'fullValidationExit' in wrapper and 'ezsttExit' in wrapper
 
     full=(ROOT/'scripts/Invoke-MetatronFullValidation.ps1').read_text(encoding='utf-8')
     assert 'if($SoakMinutes -gt 0)' in full
     assert 'if($SoakMinutes -gt 0 -and $overall)' not in full
     assert 'RequireSpeechRuntime' in full
+
+    orb=(ROOT/'scripts/Test-OrbWindow.ps1').read_text(encoding='utf-8')
+    assert 'Start-Process -FilePath $AppExe -PassThru' in orb
+    assert "FindWindow([NullString]::Value,'Metatron Presence')" in orb
+    assert "Stop-Process -Id $p.Id -Force" in orb
 
 
 def test_tts_interrupt_contract_uses_async_windows_playback():

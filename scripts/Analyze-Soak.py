@@ -136,8 +136,12 @@ def main() -> int:
 
     handle_delta=quartile_delta(x.get('handle_count') for x in all_samples)
     thread_delta=quartile_delta(x.get('thread_count') for x in all_samples)
+    gdi_delta=quartile_delta(x.get('gdi_object_count') for x in all_samples)
+    user_delta=quartile_delta(x.get('user_object_count') for x in all_samples)
     handle_slope=slope_per_hour(all_samples,'handle_count')
     thread_slope=slope_per_hour(all_samples,'thread_count')
+    gdi_slope=slope_per_hour(all_samples,'gdi_object_count')
+    user_slope=slope_per_hour(all_samples,'user_object_count')
     if handle_delta is not None and handle_delta>args.max_handle_growth:
         warnings.append(f'handle count grew by {handle_delta:.0f} across quartiles')
     if thread_delta is not None and thread_delta>args.max_thread_growth:
@@ -183,6 +187,10 @@ def main() -> int:
         'handle_count_slope_per_hour':None if handle_slope is None else round(handle_slope,3),
         'thread_count_quartile_delta':None if thread_delta is None else round(thread_delta,3),
         'thread_count_slope_per_hour':None if thread_slope is None else round(thread_slope,3),
+        'gdi_object_quartile_delta':None if gdi_delta is None else round(gdi_delta,3),
+        'gdi_object_slope_per_hour':None if gdi_slope is None else round(gdi_slope,3),
+        'user_object_quartile_delta':None if user_delta is None else round(user_delta,3),
+        'user_object_slope_per_hour':None if user_slope is None else round(user_slope,3),
         'process_churn_events':churn,
         'max_sample_elapsed_ms':max_sample_ms,
         'max_interval_overrun_ms':max_overrun_ms,

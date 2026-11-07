@@ -4,23 +4,38 @@ Settings are stored under the `app.settings` key in SQLite and merged with safe 
 
 ## Appearance
 
-- accent color
-- golden highlight color
-- background
-- density
+Theme Studio uses the existing `appearance` settings section; it does not create a second configuration store.
+
+- preset theme: Spectral Rose, Obsidian, Aurora, Ember, Porcelain, or Custom
+- accent and intelligence/core colors
+- background and surface tint
+- material, border and glow strength
+- corner-radius family
+- font scale
+- compact / comfortable / spacious density
+- minimal / balanced / expressive motion
+- full / compact sidebar
 - reduced motion
+
+The legacy `metatron` theme ID is still accepted and maps visually to Spectral Rose. Imported theme JSON is allowlisted and cannot contain raw CSS, HTML or JavaScript. Numeric values are clamped by the importer and validated again by the settings backend.
 
 ## Presence
 
-- Eco / Balanced / Spectacle
-- desktop orb toggle
-- dashboard orb toggle
-- always-on-top
-- scale / opacity
-- plasma / particles / bloom / interaction gain
-- optional pet toggle and skin path
+- master Presence enabled switch
+- Orb / Pet / Both mode
+- Eco / Balanced / Spectacle quality
+- independent desktop/dashboard orb visibility
+- independent desktop/dashboard companion visibility
+- always-on-top, click-through and scale / opacity
+- Solar / Lattice / Reactor procedural core geometry
+- core pulse / rotation / complexity / shell
+- plasma / particles / bloom / trails / parallax / interaction gain
 
-Public builds intentionally include no copyrighted character art.
+## Companions
+
+The companion roster is stored in the validated `companions` section and supports at most four entries. Each pet has independent name, enabled state, original procedural form, skin, behavior, anchor, two colors, size, energy, voice reactivity and task reactivity. Global settings control reaction gain, pointer interaction and `adaptive` / `full` / `minimal` performance policy.
+
+Public builds include no copyrighted character art. Reduced Motion also disables JavaScript companion travel, not just CSS animation.
 
 ## Voice
 

@@ -1,31 +1,38 @@
-# Release checklist
+# Release checklist — final v1.4 candidate
 
-- [ ] `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python -W error -m pytest -q`
-- [ ] `python scripts/product_audit.py`
-- [ ] JS syntax and Tauri JSON checks clean
-- [ ] Windows CI `cargo check` clean
-- [ ] Windows preflight clean
-- [ ] Real accelerator proof collected for claimed hardware
-- [ ] Speech placement and latency measured
-- [ ] Idle shell memory/CPU and orb GPU gates evaluated
-- [ ] Job Object orphan-kill test clean
-- [ ] DPAPI secret round trip clean
-- [ ] UIPI/elevated-target injection behavior verified
-- [ ] TTS playback/echo-guard/hotkey barge-in verified
-- [ ] Model/runtime licenses reviewed
-- [ ] SBOM/provenance regenerated
-- [ ] Signed installer/update provenance checked before enabling auto-update
+The normal release path on the target Windows machine requires no command construction:
 
-## v1.4 hardware qualification gates
+```text
+Double-click TEST-METATRON.cmd
+```
 
-- [ ] `Test-PowerShellScripts.ps1` PASS on target Windows.
-- [ ] `cargo fmt -- --check` and `cargo check` PASS.
-- [ ] Full Tauri Windows bundle builds and `Verify-WindowsArtifacts.ps1` PASS.
-- [ ] Orb native-window visibility/bounds gate PASS.
-- [ ] Direct OpenVINO NPU, GPU and CPU compile+infer gates PASS on reference hardware.
-- [ ] Application model placement proof PASS through Windows ML worker.
-- [ ] Real microphone capture PASS; pinned EZSTT upstream protocol/e2e/focus/restart tests PASS.
-- [ ] Windows SAPI playback interruption PASS; premium TTS benchmark PASS when release assets are configured.
-- [ ] Idle/certified-core memory gates PASS with complete process coverage and commit measurements.
-- [ ] 30-minute minimum soak/leak gate PASS (longer pre-release soak recommended).
-- [ ] Release artifacts are signed and `signtool verify /pa` PASS before publication.
+The PowerShell equivalent is `scripts\Run-MetatronTests.ps1 -Mode Full`. The harness prepares the developer/test toolchain and all qualification runtimes itself.
+
+It prepares missing Python/Git/Node/Rust/MSVC/WebView2 prerequisites when possible, creates the isolated test venv, provisions Windows ML plus an automatic ONNX probe, provisions/repairs the pinned EZSTT runtime and Parakeet model, provisions Kokoro, creates the qualification runtime, and runs portable/Rust/security/build/hardware/orb/TTS/STT/EZSTT gates, performs the 60-minute soak, generates an SBOM, and writes a single zipped evidence bundle whether the result is PASS or FAIL.
+
+## Automated gates
+
+- [ ] warnings-as-errors pytest suite PASS
+- [ ] product/security audit 9/9 PASS; dashboard allowlist remains 35 commands
+- [ ] full-product regressions PASS: core styles, four-pet validation, reduced-motion/fallback contract, automation lifecycle and tray/hidden-startup contract
+- [ ] Python/JS/Tauri syntax gates PASS
+- [ ] `cargo fmt -- --check` and `cargo check` PASS
+- [ ] full Tauri Windows bundle builds and artifact verification PASS
+- [ ] real OpenVINO NPU/GPU/CPU compile+infer proof PASS
+- [ ] Windows ML application placement proof PASS
+- [ ] real microphone capture PASS
+- [ ] Metatron↔EZSTT placement/config/privacy/personalization PASS
+- [ ] pinned EZSTT protocol/focus/restart/E2E PASS
+- [ ] Windows SAPI interruption PASS and required Kokoro benchmark PASS
+- [ ] deterministic primary-work-area Presence visibility/bounds PASS
+- [ ] automated Presence matrix PASS with `presence-solar.png`, `presence-lattice.png`, `presence-reactor.png`, `presence-pets.png` and `presence-both.png` captured from isolated test profiles
+- [ ] idle desktop memory/CPU gates PASS
+- [ ] 60-minute soak/leak gate PASS with process/commit/handle/thread/USER/GDI evidence
+- [ ] SBOM and machine-readable final summary generated
+- [ ] evidence directory compressed to one sibling `.zip`
+
+## Publication-only credential gate
+
+- [ ] Authenticode-sign release artifacts and run `Verify-WindowsArtifacts.ps1 -RequireSigned`, or run the closure command with `-RequireSigned`, before public distribution/auto-update.
+
+A missing GPU performance-counter provider is not a release failure by itself. Counter evidence remains `null` and bounded by timeout; direct OpenVINO compile+infer proof is the authoritative accelerator gate.

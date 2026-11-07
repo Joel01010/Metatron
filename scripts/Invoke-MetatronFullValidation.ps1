@@ -11,6 +11,7 @@ param(
     [switch]$SupportBundle,
     [switch]$RequireHardware,
     [switch]$RequireSpeechRuntime,
+    [switch]$RequireKokoro,
     [switch]$RequireSigned,
     [int]$SoakMinutes=0
 )
@@ -114,7 +115,9 @@ if(-not $SkipAccelerators){
 }
 
 if(-not $SkipSpeech){
-    if($env:METATRON_SPEECH_CMD){
+    $speechManifest=if($env:LOCALAPPDATA){Join-Path $env:LOCALAPPDATA 'Metatron\runtimes\speech-command.json'}else{''}
+    $speechConfigured=([bool]$env:METATRON_SPEECH_CMD) -or ($speechManifest -and (Test-Path $speechManifest))
+    if($speechConfigured){
         Run 'Speech runtime placement' $Python @(
             'scripts\Verify-SpeechRuntime.py','--json-out',(Join-Path $OutputDir 'speech.json')
         ) (!$RequireSpeechRuntime)
@@ -122,7 +125,7 @@ if(-not $SkipSpeech){
         # A microphone/NPU can be real and healthy while an optional external
         # speech sidecar is simply not installed. Treat that as SKIP unless the
         # caller explicitly requires the Metatron sidecar integration.
-        Add 'Speech runtime placement' $(if($RequireSpeechRuntime){'FAIL'}else{'SKIP'}) 'METATRON_SPEECH_CMD not configured'
+        Add 'Speech runtime placement' $(if($RequireSpeechRuntime){'FAIL'}else{'SKIP'}) 'speech runtime command/manifest not configured'
     }
 
     $qpy=$env:METATRON_QUALIFICATION_PYTHON
@@ -137,9 +140,9 @@ if(-not $SkipSpeech){
 
 if(-not $SkipTTS){
     if($env:METATRON_KOKORO_PYTHON){
-        Run 'Kokoro TTS benchmark' $Python @('scripts\benchmark_tts.py') $true
+        Run 'Kokoro TTS benchmark' $Python @('scripts\benchmark_tts.py') (!$RequireKokoro)
     }else{
-        Add 'Kokoro TTS benchmark' SKIP 'Kokoro not configured'
+        Add 'Kokoro TTS benchmark' $(if($RequireKokoro){'FAIL'}else{'SKIP'}) 'Kokoro not configured'
     }
     Run 'Windows SAPI playback interruption' $Python @('scripts\Test-WindowsTTSInterrupt.py') (!$RequireHardware)
 }
@@ -168,9 +171,9 @@ if($DesktopBenchmark -or $All){
     }
 
     try {
-        & $PSScriptRoot\Test-OrbWindow.ps1
+        & $PSScriptRoot\Test-OrbWindow.ps1 -ScreenshotPath (Join-Path $OutputDir 'presence-window.png')
         if($LASTEXITCODE -ne 0){throw 'Orb visibility/bounds failed'}
-        Add 'Orb visibility and bounds' PASS 'visible and intersects a monitor'
+        Add 'Orb visibility and bounds' PASS 'visible, on-screen, and deterministically anchored to primary work area'
     } catch {
         Add 'Orb visibility and bounds' $(if($RequireHardware){'FAIL'}else{'WARN'}) $_.Exception.Message
     }
@@ -189,7 +192,7 @@ if($SoakMinutes -gt 0){
 
 if($SupportBundle -or $All){
     try {
-        & $PSScriptRoot\Collect-SupportBundle.ps1 -OutFile (Join-Path $OutputDir 'Metatron-Support.zip')
+        & $PSScriptRoot\Collect-SupportBundle.ps1 -OutFile (Join-Path $OutputDir 'Metatron-Support.zip') -Python $Python
         Add 'Support bundle' PASS 'generated'
     } catch {
         Add 'Support bundle' WARN $_.Exception.Message

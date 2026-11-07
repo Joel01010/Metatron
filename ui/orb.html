@@ -3,10 +3,33 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <style>html,body{margin:0;width:100%;height:100%;overflow:hidden;background:transparent}#orb{position:fixed;inset:0;width:100%;height:100%}#state,#hud,#help{display:none}</style>
+  <style>
+    html,body{margin:0;width:100%;height:100%;overflow:hidden;background:transparent;user-select:none}
+    #orb{position:fixed;inset:0;width:100%;height:100%}
+    #companions{position:fixed;inset:0;overflow:hidden;pointer-events:none}
+    #state,#hud,#help{display:none}
+    .companion{--pet-primary:#ff8f9c;--pet-secondary:#ffc65c;--pet-size:1;--pet-energy:.7;--pet-react:0;--pet-task:0;position:absolute;left:0;top:0;width:58px;height:58px;transform-origin:center;will-change:transform;transition:opacity .18s ease;filter:drop-shadow(0 5px 12px color-mix(in srgb,var(--pet-primary) 28%,transparent));opacity:.96}
+    .companion[hidden]{display:none}
+    .pet-body{position:absolute;inset:10%;border-radius:45% 55% 48% 52%;background:radial-gradient(circle at 38% 33%,white 0 5%,var(--pet-secondary) 6% 13%,var(--pet-primary) 34%,color-mix(in srgb,var(--pet-primary) 28%,#09090b) 74%);box-shadow:inset 0 0 10px #fff3,0 0 calc(8px + 10px*var(--pet-react)) color-mix(in srgb,var(--pet-primary) 55%,transparent);transform:scale(var(--pet-size));transition:filter .16s ease}
+    .pet-core{position:absolute;width:20%;height:20%;left:40%;top:40%;border-radius:50%;background:var(--pet-secondary);box-shadow:0 0 calc(7px + 8px*var(--pet-react)) var(--pet-secondary)}
+    .pet-eye{position:absolute;width:7%;height:9%;top:37%;border-radius:50%;background:#fff;box-shadow:0 0 4px #fff}.pet-eye-a{left:31%}.pet-eye-b{right:31%}
+    .pet-fin{position:absolute;width:25%;height:11%;top:48%;background:linear-gradient(90deg,var(--pet-primary),transparent);border-radius:90% 10% 90% 10%;opacity:.72}.pet-fin-a{left:-17%;transform:rotate(16deg)}.pet-fin-b{right:-17%;transform:scaleX(-1) rotate(16deg)}
+    .pet-shadow{position:absolute;left:24%;right:24%;bottom:0;height:9%;border-radius:50%;background:#0007;filter:blur(5px)}
+    .pet-trail{position:absolute;right:54%;top:44%;width:38px;height:7px;border-radius:50%;background:linear-gradient(90deg,transparent,var(--pet-primary));opacity:calc(.18 + .24*var(--pet-energy));filter:blur(3px)}
+    .pet-name{display:none}
+    .companion[data-form="wisp"] .pet-body{border-radius:55% 45% 65% 35%;background:radial-gradient(circle at 45% 40%,white 0 6%,var(--pet-secondary) 8% 18%,var(--pet-primary) 45%,transparent 76%);filter:blur(.2px)}
+    .companion[data-form="wisp"] .pet-fin{display:none}.companion[data-form="wisp"] .pet-eye{width:6%;height:6%;top:41%}
+    .companion[data-form="drone"] .pet-body{border-radius:32%;background:linear-gradient(145deg,color-mix(in srgb,var(--pet-primary) 65%,#fff),#20242a 58%,var(--pet-primary));box-shadow:inset 0 0 0 1px #fff4,0 0 12px color-mix(in srgb,var(--pet-secondary) 30%,transparent)}
+    .companion[data-form="drone"] .pet-eye{top:40%;height:5%;width:12%;border-radius:3px;background:var(--pet-secondary)}.companion[data-form="drone"] .pet-eye-a{left:26%}.companion[data-form="drone"] .pet-eye-b{right:26%}.companion[data-form="drone"] .pet-fin{height:7%;top:54%}
+    .companion[data-form="mote"]{width:44px;height:44px}.companion[data-form="mote"] .pet-body{border-radius:50%;background:radial-gradient(circle,white 0 5%,var(--pet-secondary) 7% 23%,var(--pet-primary) 45%,transparent 72%);box-shadow:0 0 18px var(--pet-primary)}.companion[data-form="mote"] .pet-eye,.companion[data-form="mote"] .pet-fin{display:none}
+    .companion[data-skin="graphite"]{filter:drop-shadow(0 5px 10px #0009)}.companion[data-skin="frost"] .pet-body{filter:saturate(.55) brightness(1.15)}.companion[data-skin="ember"] .pet-body{filter:saturate(1.25)}.companion[data-skin="rose"] .pet-body{filter:hue-rotate(-12deg) saturate(1.1)}
+    .companion[data-state="listening"] .pet-body{filter:brightness(1.14) saturate(1.15)}.companion[data-state="thinking"] .pet-core{animation:petPulse .75s ease-in-out infinite alternate}.companion[data-state="speaking"] .pet-body{animation:petSpeak .42s ease-in-out infinite alternate}
+    @keyframes petPulse{to{transform:scale(1.55)}}@keyframes petSpeak{to{filter:brightness(1.25);transform:scale(calc(var(--pet-size)*1.05))}}
+    @media(prefers-reduced-motion:reduce){.companion .pet-body,.companion .pet-core{animation:none!important}}
+  </style>
 </head>
 <body>
-<canvas id="orb"></canvas><span id="state"></span>
+<canvas id="orb"></canvas><div id="companions" aria-hidden="true"></div><span id="state"></span>
 <script src="orb-renderer.js"></script>
 <script src="orb.js"></script>
 </body>

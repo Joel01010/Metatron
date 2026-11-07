@@ -18,3 +18,15 @@ def test_active_app_policy_visible(tmp_path:Path):
  try:
   a.app_rules.upsert('bank.exe',privacy_action='pause',context_profile='personal');a.speech._privacy_runtime_supported=False;a.speech._handle_event({'event':'active_app','app_id':'BANK.EXE','app_name':'Bank'});st=a.speech.status();assert st['active_app']['paused_by_policy'];assert st['privacy_runtime_supported'] is False
  finally:a.close()
+
+def test_privacy_paused_transcript_never_enters_history_or_vocabulary(tmp_path:Path):
+ a=app(tmp_path)
+ try:
+  a.settings.set('privacy',{'save_transcripts':True})
+  before=a.vocabulary.list()
+  a.bus.emit('speech.transcript.final','speech',{
+   'text':'private supabase note','raw_text':'private supabase note',
+   'status':'privacy_paused','app_id':'bank.exe','context_profile':'personal'})
+  assert a.history.stats()['total']==0
+  assert a.vocabulary.list()==before
+ finally:a.close()

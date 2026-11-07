@@ -5,9 +5,9 @@ from pathlib import Path
 ROOT=Path(__file__).resolve().parents[1];sys.path.insert(0,str(ROOT))
 from metatron.config import AppConfig
 from metatron.core import Metatron
-from metatron.speech import _split_command
+from metatron.speech import speech_command_from_env
 def main():
- ap=argparse.ArgumentParser();ap.add_argument('--command-json',default='');ap.add_argument('--json-out',default='');a=ap.parse_args();cmd=json.loads(a.command_json) if a.command_json else _split_command(os.environ.get('METATRON_SPEECH_CMD',''))
+ ap=argparse.ArgumentParser();ap.add_argument('--command-json',default='');ap.add_argument('--json-out',default='');a=ap.parse_args();cmd=json.loads(a.command_json) if a.command_json else speech_command_from_env()
  if not cmd:
   out={'schema':1,'configured':False,'verified':False,'reason':'METATRON_SPEECH_CMD is not configured'};print(json.dumps(out,indent=2));Path(a.json_out).write_text(json.dumps(out,indent=2)+'\n') if a.json_out else None;return 3
  with tempfile.TemporaryDirectory(prefix='metatron-speech-probe-') as td:

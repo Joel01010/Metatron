@@ -207,5 +207,15 @@ class JsonlWorkerSupervisor:
         # The broker invokes _terminate_process through its registered hook.
         self.broker.unload(self.name)
 
+    def peak_memory(self) -> dict[str, float] | None:
+        job = self._job
+        if job is None:
+            return None
+        try:
+            peak = job.peak_memory()
+            return {"peak_process_mib": float(peak.peak_process_mib), "peak_job_mib": float(peak.peak_job_mib)}
+        except Exception:
+            return None
+
     def idle_for_s(self) -> float:
         return max(0.0, time.monotonic() - self._last_used) if self._last_used else float("inf")

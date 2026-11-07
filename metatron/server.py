@@ -281,14 +281,43 @@ class Dispatcher:
             return fn()
 
         if cmd == "tasks.list":
+            if p.get("automation"):
+                return self.app.automation_snapshot(int(p.get("limit", 80)))
             return self.app.kanban.list(p.get("status"), int(p.get("limit", 200)), int(p.get("offset", 0)))
         if cmd == "tasks.get":
             return self.app.kanban.get(str(p["task_id"]))
         if cmd == "tasks.create":
-            title = str(p.pop("title"))
-            return self.app.kanban.create(title, **p)
+            if p.get("entity") == "schedule":
+                label = str(p.get("label") or p.get("title") or "Scheduled task").strip()
+                template = dict(p.get("task_template") or {"title": label, "status": "ready"})
+                template.setdefault("title", label)
+                template.setdefault("status", "ready")
+                return self.app.scheduler.create_interval(
+                    label, template, float(p["interval_s"]), p.get("agent_id"), p.get("first_run")
+                )
+            payload = dict(p)
+            title = str(payload.pop("title"))
+            payload.pop("entity", None)
+            return self.app.kanban.create(title, **payload)
         if cmd == "tasks.move":
-            return self.app.kanban.move(str(p["task_id"]), str(p["status"]), str(p.get("actor", "user")))
+            action = str(p.get("action") or "move")
+            if action == "move":
+                return self.app.kanban.move(str(p["task_id"]), str(p["status"]), str(p.get("actor", "user")))
+            if action == "assign":
+                return self.app.kanban.assign(str(p["task_id"]), p.get("agent_id"), str(p.get("actor", "user")))
+            if action == "run":
+                return self.app.run_task(str(p["task_id"]))
+            if action == "run.refresh":
+                return self.app.refresh_run(str(p["run_id"]))
+            if action == "run.cancel":
+                return self.app.cancel_run(str(p["run_id"]))
+            if action == "schedule.toggle":
+                return self.app.scheduler.set_enabled(str(p["schedule_id"]), bool(p.get("enabled", True)))
+            if action == "schedule.delete":
+                return {"deleted": self.app.scheduler.delete(str(p["schedule_id"]))}
+            if action == "approval.decide":
+                return self.app.approvals.decide(str(p["approval_id"]), bool(p.get("approved")), "user")
+            raise ProtocolError("bad_request", f"unsupported tasks.move action {action!r}")
         if cmd == "tasks.assign":
             return self.app.kanban.assign(str(p["task_id"]), p.get("agent_id"), str(p.get("actor", "user")))
 

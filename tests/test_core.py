@@ -68,6 +68,20 @@ class CoreTests(unittest.TestCase):
             finally:
                 app.close()
 
+    def test_system_commit_pressure_triggers_without_low_physical_ram(self):
+        with tempfile.TemporaryDirectory() as td:
+            app = Metatron(AppConfig(data_dir=Path(td), enable_background_maintenance=False))
+            try:
+                app.memory.load("s1-mini-by-superwhisper")
+                app.set_presence_quality("spectacle")
+                result = app.apply_system_pressure(available_mib=8192, commit_percent=99.0)
+                self.assertTrue(result["pressure"])
+                self.assertIn("high-system-commit", result["reasons"])
+                self.assertIn("s1-mini-by-superwhisper", result["evicted"])
+                self.assertEqual(app.presence.snapshot()["quality"], "eco")
+            finally:
+                app.close()
+
 
 if __name__ == "__main__":
     unittest.main()

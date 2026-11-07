@@ -53,6 +53,17 @@ class RunStore:
             out.append(row)
         return out
 
+    def update_metadata(self, run_id: str, patch: dict[str, Any]) -> dict:
+        current = self.get(run_id)
+        metadata = dict(current.get("metadata") or {})
+        metadata.update(dict(patch or {}))
+        self.db.execute(
+            "UPDATE task_runs SET metadata_json=?,updated_at=? WHERE id=?",
+            (self.db.dumps(metadata), time.time(), run_id),
+        )
+        return self.get(run_id)
+
+
     def acquire(self, run_id: str, owner: str, ttl_s: float = 60.0) -> dict:
         now = time.time()
         expires = now + max(5.0, float(ttl_s))

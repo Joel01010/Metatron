@@ -223,10 +223,15 @@ class Metatron:
     def _handle_product_event(self, event: Any) -> None:
         if event.topic != "speech.transcript.final":
             return
+        payload = dict(event.payload or {})
+        # A paused-app transcript is deliberately non-persistable.  The speech
+        # adapter may emit it for immediate UI/accountability, but privacy pause
+        # means no history or vocabulary learning from that capture.
+        if str(payload.get("status") or "").strip().lower() == "privacy_paused":
+            return
         privacy = self.settings.get("privacy") or {}
         if not bool(privacy.get("save_transcripts", False)):
             return
-        payload = dict(event.payload or {})
         text = str(payload.get("text") or "")
         if not text:
             return
@@ -350,22 +355,44 @@ class Metatron:
                 except KeyError:
                     pass
 
-    def apply_system_pressure(self, available_mib: float | None = None) -> dict[str, Any]:
+    def apply_system_pressure(
+        self,
+        available_mib: float | None = None,
+        commit_percent: float | None = None,
+    ) -> dict[str, Any]:
         """Reduce optional residency when Windows itself is under pressure.
 
-        This is deliberately one-way: Metatron may reduce visual quality and
-        unload optional models, but it does not auto-restore them later. That
-        avoids oscillation and respects the user's explicit next action.
+        Pressure is asserted by either low physical availability or high system
+        commit.  The latter catches paging/commit exhaustion that a physical-RAM
+        check alone can miss.  Recovery is intentionally one-way: optional
+        resources stay unloaded until the user's next explicit action.
         """
+        snapshot = system_memory()
         if available_mib is None:
-            raw = system_memory().get("available_mib")
+            raw = snapshot.get("available_mib")
             available_mib = None if raw is None else float(raw)
+        if commit_percent is None:
+            used = snapshot.get("commit_used_mib")
+            limit = snapshot.get("commit_limit_mib")
+            if used is not None and limit not in (None, 0):
+                commit_percent = float(used) / float(limit) * 100.0
+
         minimum = float(self.config.memory.min_system_available_mib)
-        if available_mib is None or available_mib >= minimum:
-            return {"pressure": False, "available_mib": available_mib, "minimum_mib": minimum, "evicted": []}
+        max_commit = float(self.config.memory.max_system_commit_percent)
+        low_available = available_mib is not None and available_mib < minimum
+        high_commit = commit_percent is not None and commit_percent >= max_commit
+        if not low_available and not high_commit:
+            return {
+                "pressure": False,
+                "available_mib": available_mib,
+                "minimum_mib": minimum,
+                "commit_percent": commit_percent,
+                "max_commit_percent": max_commit,
+                "evicted": [],
+            }
 
         evicted: list[str] = []
-        # Cleanup is recomputable and is the first ML worker to sacrifice.
+        # Cleanup/TTS are recomputable and are the first ML workers to sacrifice.
         for name in ("s1-mini-by-superwhisper", "kokoro-82m-tts", "piper-en-tts", "windows-sapi-tts"):
             if name == "kokoro-82m-tts" and self.tts.status().get("speaking"):
                 continue
@@ -378,18 +405,27 @@ class Metatron:
                 pass
 
         # Rendering degrades instead of disappearing. One procedural shader at
-        # reduced resolution is much cheaper than destroying the user's presence.
+        # reduced resolution is cheaper than destroying the user's presence.
         if self.presence.snapshot().get("quality") != "eco":
             self.memory.set_estimated_mib("presence-orb-renderer", 90)
             self.presence.set_quality("eco", source="memory-pressure")
 
-        self.bus.emit("memory.pressure", "memory", {
+        reasons = []
+        if low_available:
+            reasons.append("low-available-memory")
+        if high_commit:
+            reasons.append("high-system-commit")
+        payload = {
             "available_mib": available_mib,
             "minimum_mib": minimum,
+            "commit_percent": commit_percent,
+            "max_commit_percent": max_commit,
+            "reasons": reasons,
             "evicted": evicted,
             "action": "eco-presence",
-        })
-        return {"pressure": True, "available_mib": available_mib, "minimum_mib": minimum, "evicted": evicted}
+        }
+        self.bus.emit("memory.pressure", "memory", payload)
+        return {"pressure": True, **payload}
 
     def _materialize_due_schedules(self, now: float | None = None) -> list[dict[str, Any]]:
         created = []
@@ -429,12 +465,22 @@ class Metatron:
                 labels = {a["id"]: a["label"] for a in self.agents.list(include_detect=False)}
                 names = ", ".join(labels.get(i, i) for i in sorted(loaded_agent_ids))
                 raise RuntimeError(f"local-agent limit ({limit}) reached; stop {names} first")
-            available = system_memory().get("available_mib")
+            system = system_memory()
+            available = system.get("available_mib")
             minimum = self.config.memory.min_system_available_mib
             if available is not None and float(available) < minimum:
                 raise RuntimeError(
                     f"system memory guard: only {float(available):.0f} MiB available; {minimum} MiB required"
                 )
+            commit_used = system.get("commit_used_mib")
+            commit_limit = system.get("commit_limit_mib")
+            if commit_used is not None and commit_limit not in (None, 0):
+                commit_pct = float(commit_used) / float(commit_limit) * 100.0
+                if commit_pct >= float(self.config.memory.max_system_commit_percent):
+                    raise RuntimeError(
+                        f"system commit guard: {commit_pct:.1f}% committed; "
+                        f"limit is {self.config.memory.max_system_commit_percent:.1f}%"
+                    )
             self.memory.load(resource_name)
         try:
             status = agent.start().to_dict()
@@ -480,6 +526,124 @@ class Metatron:
                 pass
         self.bus.emit("agent.stopped", "core", {"agent_id": agent_id, "state": status["state"]})
         return status
+
+    def automation_snapshot(self, limit: int = 80) -> dict[str, Any]:
+        limit = min(max(1, int(limit)), 250)
+        return {
+            "schedules": self.scheduler.list(False),
+            "approvals": self.approvals.list(None, limit),
+            "runs": self.runs.list(None, limit),
+            "agents": self.agents.list(include_detect=False),
+        }
+
+    def run_task(self, task_id: str) -> dict[str, Any]:
+        task = self.kanban.get(task_id)
+        agent_id = str(task.get("agent_id") or "").strip()
+        if not agent_id:
+            raise ValueError("task must be assigned to an agent before it can run")
+        run = self.runs.create(task_id, agent_id, {"source": "dashboard", "task_title": task.get("title")})
+        self.runs.set_state(run["id"], "running", "user")
+        try:
+            result = self.submit_agent(agent_id, task)
+        except Exception as exc:
+            self.runs.update_metadata(run["id"], {"submission_error": f"{type(exc).__name__}: {exc}"})
+            self.runs.set_state(run["id"], "failed", "core", exit_code=1)
+            self.kanban.move(task_id, "blocked", "core")
+            raise
+        self.runs.update_metadata(run["id"], {"submission": result})
+        if not bool(result.get("accepted")):
+            self.runs.set_state(run["id"], "failed", "core", exit_code=1)
+            self.kanban.move(task_id, "blocked", "core")
+        else:
+            self.kanban.move(task_id, "running", "user")
+        return {"run": self.runs.get(run["id"]), "submission": result, "task": self.kanban.get(task_id)}
+
+    @staticmethod
+    def _remote_terminal_state(payload: Any) -> str | None:
+        if not isinstance(payload, dict):
+            return None
+        candidate = payload.get("state") or payload.get("status")
+        if candidate is None and isinstance(payload.get("job"), dict):
+            candidate = payload["job"].get("state") or payload["job"].get("status")
+        value = str(candidate or "").strip().lower()
+        if value in {"done", "complete", "completed", "success", "succeeded"}:
+            return "succeeded"
+        if value in {"failed", "error"}:
+            return "failed"
+        if value in {"cancelled", "canceled"}:
+            return "cancelled"
+        if value in {"review", "waiting", "running", "queued", "leased"}:
+            return "waiting" if value == "waiting" else "running"
+        return None
+
+    def refresh_run(self, run_id: str) -> dict[str, Any]:
+        run = self.runs.get(run_id)
+        if run["state"] in {"succeeded", "failed", "cancelled"}:
+            return run
+        agent_id = str(run.get("agent_id") or "")
+        agent = self.agents.get(agent_id)
+        submission = dict((run.get("metadata") or {}).get("submission") or {})
+        observed: Any = None
+        terminal: str | None = None
+        if agent_id == "claude-code" and hasattr(agent, "result"):
+            observed = agent.result()
+            if observed is not None:
+                terminal = "succeeded" if bool(observed.get("ok")) else "failed"
+        elif agent_id in {"eop", "ezra"} and hasattr(agent, "job_status"):
+            observed = agent.job_status(submission.get("job_id"))
+            terminal = self._remote_terminal_state(observed)
+        elif agent_id == "opencode" and hasattr(agent, "session_status"):
+            observed = agent.session_status(submission.get("session_id"))
+            terminal = self._remote_terminal_state(observed)
+        elif agent_id == "codex" and hasattr(agent, "events"):
+            events = agent.events(False)
+            observed = {"events": events[-25:]}
+            # Codex event schemas evolve; only mark terminal on explicit terminal
+            # method names rather than inferring completion from silence.
+            for event in reversed(events):
+                method = str(event.get("method") or event.get("type") or "").lower()
+                if "turn/completed" in method or method.endswith("turn.completed"):
+                    terminal = "succeeded"
+                    break
+                if "turn/failed" in method or method.endswith("turn.failed"):
+                    terminal = "failed"
+                    break
+        if observed is not None:
+            self.runs.update_metadata(run_id, {"last_observed": observed, "last_refresh": time.time()})
+        if terminal in {"succeeded", "failed", "cancelled"}:
+            self.runs.set_state(run_id, terminal, "core", exit_code=0 if terminal == "succeeded" else 1)
+            target = "review" if terminal == "succeeded" else ("backlog" if terminal == "cancelled" else "blocked")
+            try:
+                self.kanban.move(run["task_id"], target, "core")
+            except Exception:
+                pass
+        elif terminal in {"running", "waiting"} and run["state"] != terminal:
+            self.runs.set_state(run_id, terminal, "core")
+        return self.runs.get(run_id)
+
+    def cancel_run(self, run_id: str) -> dict[str, Any]:
+        run = self.runs.get(run_id)
+        if run["state"] in {"succeeded", "failed", "cancelled"}:
+            return run
+        agent_id = str(run.get("agent_id") or "")
+        agent = self.agents.get(agent_id)
+        submission = dict((run.get("metadata") or {}).get("submission") or {})
+        result: Any = None
+        if agent_id in {"eop", "ezra"} and hasattr(agent, "cancel_job"):
+            result = agent.cancel_job(submission.get("job_id"))
+        elif agent_id == "opencode" and hasattr(agent, "abort") and submission.get("session_id"):
+            result = {"aborted": bool(agent.abort(str(submission["session_id"])))}
+        elif agent_id == "codex" and hasattr(agent, "interrupt") and submission.get("thread_id"):
+            result = agent.interrupt(str(submission["thread_id"]), submission.get("turn_id"))
+        else:
+            result = agent.stop().to_dict()
+        self.runs.update_metadata(run_id, {"cancel_result": result, "cancelled_at": time.time()})
+        self.runs.set_state(run_id, "cancelled", "user", exit_code=130)
+        try:
+            self.kanban.move(run["task_id"], "backlog", "user")
+        except Exception:
+            pass
+        return self.runs.get(run_id)
 
     def set_memory_profile(self, profile_name: str) -> dict:
         profile_name = profile_name.strip().lower()

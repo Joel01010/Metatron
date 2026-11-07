@@ -13,6 +13,29 @@ if($RootProcessId -le 0 -or $DurationSeconds -le 0 -or $IntervalMilliseconds -lt
     throw 'Invalid process or sampling interval'
 }
 
+
+Add-Type -TypeDefinition @"
+using System;
+using System.Runtime.InteropServices;
+public static class MetatronGuiResources {
+  [DllImport("kernel32.dll", SetLastError=true)] public static extern IntPtr OpenProcess(uint access, bool inherit, int pid);
+  [DllImport("kernel32.dll")] public static extern bool CloseHandle(IntPtr h);
+  [DllImport("user32.dll")] public static extern uint GetGuiResources(IntPtr hProcess, uint uiFlags);
+}
+"@ -ErrorAction SilentlyContinue
+
+function Get-GuiResourceCounts([int]$ProcessId) {
+    $PROCESS_QUERY_INFORMATION=0x0400
+    $h=[MetatronGuiResources]::OpenProcess($PROCESS_QUERY_INFORMATION,$false,$ProcessId)
+    if($h -eq [IntPtr]::Zero){return $null}
+    try {
+        [pscustomobject]@{
+            gdi=[int][MetatronGuiResources]::GetGuiResources($h,0)
+            user=[int][MetatronGuiResources]::GetGuiResources($h,1)
+        }
+    } finally { [MetatronGuiResources]::CloseHandle($h) | Out-Null }
+}
+
 function Get-ProcessTree([int]$RootId) {
     $all=@(Get-CimInstance Win32_Process)
     $map=@{}
@@ -109,11 +132,14 @@ for($i=0;$i -lt $count;$i++) {
     $cpu=0.0
     $handles=0L
     $threads=0L
+    $gdiObjects=0L
+    $userObjects=0L
     $readCount=0
     $privateWorkingCount=0
     $cpuCount=0
     $handleCount=0
     $threadCount=0
+    $guiCount=0
     $processRows=@()
 
     foreach($id in $ids) {
@@ -124,6 +150,8 @@ for($i=0;$i -lt $count;$i++) {
         $pcpu=$null
         $phandles=$null
         $pthreads=$null
+        $pgdi=$null
+        $puser=$null
         try {
             $p=Get-Process -Id $id -ErrorAction Stop
             $p.Refresh()
@@ -148,6 +176,16 @@ for($i=0;$i -lt $count;$i++) {
                 $threads+=$pthreads
                 $threadCount++
             } catch {}
+            try {
+                $gui=Get-GuiResourceCounts -ProcessId $id
+                if($null -ne $gui){
+                    $pgdi=[int]$gui.gdi
+                    $puser=[int]$gui.user
+                    $gdiObjects+=$pgdi
+                    $userObjects+=$puser
+                    $guiCount++
+                }
+            } catch {}
         } catch {}
 
         if($privateByPid.ContainsKey([int]$id)){
@@ -165,6 +203,8 @@ for($i=0;$i -lt $count;$i++) {
             cpu_seconds=$(if($null -ne $pcpu){[math]::Round($pcpu,3)}else{$null})
             handles=$phandles
             threads=$pthreads
+            gdi_objects=$pgdi
+            user_objects=$puser
         }
     }
 
@@ -244,11 +284,14 @@ for($i=0;$i -lt $count;$i++) {
         process_cpu_seconds=$(if($cpuCount -eq $ids.Count){[math]::Round($cpu,3)}else{$null})
         handle_count=$(if($handleCount -eq $ids.Count){$handles}else{$null})
         thread_count=$(if($threadCount -eq $ids.Count){$threads}else{$null})
+        gdi_object_count=$(if($guiCount -eq $ids.Count){$gdiObjects}else{$null})
+        user_object_count=$(if($guiCount -eq $ids.Count){$userObjects}else{$null})
         memory_coverage=$readCount
         private_working_set_coverage=$privateWorkingCount
         cpu_coverage=$cpuCount
         handle_coverage=$handleCount
         thread_coverage=$threadCount
+        gui_resource_coverage=$guiCount
         logical_processors=$logical
         system_available_mib=[double]$mem.AvailableMBytes
         system_committed_mib=[math]::Round($committed,2)
@@ -264,7 +307,7 @@ for($i=0;$i -lt $count;$i++) {
 }
 
 $report=@{
-    schema=4
+    schema=5
     root_pid=$RootProcessId
     root_start_utc=$rootStart.ToString('o')
     duration_seconds=$DurationSeconds

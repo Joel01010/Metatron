@@ -13,7 +13,11 @@ use std::{
     thread,
     time::Duration,
 };
-use tauri::{Emitter, LogicalSize, Manager, PhysicalPosition, State, WebviewWindow};
+use tauri::{
+    menu::{Menu, MenuItem},
+    tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
+    Emitter, LogicalSize, Manager, PhysicalPosition, State, WebviewWindow, WindowEvent,
+};
 
 #[cfg(windows)]
 struct BackendJob {
@@ -337,12 +341,14 @@ fn position_orb_on_primary(orb: &WebviewWindow) -> Result<(), String> {
     let Some(monitor) = monitor else {
         return Ok(());
     };
-    let mon_pos = monitor.position();
-    let mon_size = monitor.size();
+    // Anchor to the primary monitor's usable work area, not the full panel.
+    // This keeps Presence out of the taskbar and makes its default desktop
+    // position deterministic across launches.
+    let work_area = monitor.work_area();
     let orb_size = orb.outer_size().map_err(|e| e.to_string())?;
     let margin = 24i32;
-    let x = mon_pos.x + mon_size.width as i32 - orb_size.width as i32 - margin;
-    let y = mon_pos.y + mon_size.height as i32 - orb_size.height as i32 - margin;
+    let x = work_area.position.x + work_area.size.width as i32 - orb_size.width as i32 - margin;
+    let y = work_area.position.y + work_area.size.height as i32 - orb_size.height as i32 - margin;
     orb.set_position(PhysicalPosition::new(x, y))
         .map_err(|e| e.to_string())
 }
@@ -366,12 +372,16 @@ fn window_command(
         "orb.always_on_top" => orb
             .set_always_on_top(value.as_bool().unwrap_or(true))
             .map_err(|e| e.to_string())?,
+        "orb.ignore_cursor" => orb
+            .set_ignore_cursor_events(value.as_bool().unwrap_or(false))
+            .map_err(|e| e.to_string())?,
         "orb.reposition" => position_orb_on_primary(&orb)?,
         "orb.scale" => {
             let scale = value.as_f64().unwrap_or(1.0).clamp(0.5, 2.0);
             let size = 360.0 * scale;
             orb.set_size(LogicalSize::new(size, size))
                 .map_err(|e| e.to_string())?;
+            position_orb_on_primary(&orb)?;
         }
         "main.show" => {
             let main = app.get_webview_window("main").ok_or("main window not found")?;
@@ -401,13 +411,75 @@ fn main() {
                 process: backend,
                 next_id: AtomicU64::new(1),
             });
-            // Tauri creates the presence WebView separately. Make its initial state
-            // explicit rather than depending on platform-specific default stacking.
+            // Presence starts hidden. The dashboard reveals it only after persisted
+            // Orb/Pet/Both settings are loaded, preventing a startup flash and making
+            // "Presence disabled" authoritative from the first visible frame.
             if let Some(orb) = app.get_webview_window("orb") {
                 orb.set_always_on_top(true)?;
                 position_orb_on_primary(&orb).map_err(std::io::Error::other)?;
-                orb.show()?;
+                orb.hide()?;
             }
+
+            // Closing the dashboard hides it instead of stranding a background
+            // Presence process with no recovery surface. The tray owns recovery/quit.
+            if let Some(main) = app.get_webview_window("main") {
+                let main_for_close = main.clone();
+                main.on_window_event(move |event| {
+                    if let WindowEvent::CloseRequested { api, .. } = event {
+                        api.prevent_close();
+                        let _ = main_for_close.hide();
+                    }
+                });
+            }
+
+            let open_item = MenuItem::with_id(app, "open-dashboard", "Open Dashboard", true, None::<&str>)?;
+            let presence_item = MenuItem::with_id(app, "toggle-presence", "Show / Hide Presence", true, None::<&str>)?;
+            let quit_item = MenuItem::with_id(app, "quit", "Quit Metatron", true, None::<&str>)?;
+            let tray_menu = Menu::with_items(app, &[&open_item, &presence_item, &quit_item])?;
+            let mut tray = TrayIconBuilder::new()
+                .menu(&tray_menu)
+                .show_menu_on_left_click(false)
+                .tooltip("Metatron")
+                .on_menu_event(|app, event| match event.id().as_ref() {
+                    "open-dashboard" => {
+                        if let Some(main) = app.get_webview_window("main") {
+                            let _ = main.unminimize();
+                            let _ = main.show();
+                            let _ = main.set_focus();
+                        }
+                    }
+                    "toggle-presence" => {
+                        if let Some(orb) = app.get_webview_window("orb") {
+                            if orb.is_visible().unwrap_or(false) {
+                                let _ = orb.hide();
+                            } else {
+                                let _ = position_orb_on_primary(&orb);
+                                let _ = orb.show();
+                            }
+                        }
+                    }
+                    "quit" => app.exit(0),
+                    _ => {}
+                })
+                .on_tray_icon_event(|tray, event| {
+                    if let TrayIconEvent::Click {
+                        button: MouseButton::Left,
+                        button_state: MouseButtonState::Up,
+                        ..
+                    } = event
+                    {
+                        let app = tray.app_handle();
+                        if let Some(main) = app.get_webview_window("main") {
+                            let _ = main.unminimize();
+                            let _ = main.show();
+                            let _ = main.set_focus();
+                        }
+                    }
+                });
+            if let Some(icon) = app.default_window_icon() {
+                tray = tray.icon(icon.clone());
+            }
+            tray.build(app)?;
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![backend_command, window_command])
